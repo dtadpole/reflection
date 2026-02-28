@@ -1,0 +1,5 @@
+model = "opus"
+temperature = 0.3
+max_turns = 20
+tools = ["Read", "Grep"]
+custom_tools = ["code_executor", "knowledge_retriever"]

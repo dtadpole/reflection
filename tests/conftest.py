@@ -1,0 +1,81 @@
+"""Shared test fixtures."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def tmp_dir(tmp_path: Path) -> Path:
+    """Provide a temporary directory for test data."""
+    return tmp_path
+
+
+@pytest.fixture
+def sample_agent_dir(tmp_path: Path) -> Path:
+    """Create a sample agent directory structure for testing."""
+    agent_dir = tmp_path / "agents" / "test_agent"
+    agent_dir.mkdir(parents=True)
+
+    # agent.md
+    (agent_dir / "agent.md").write_text(
+        """# Test Agent
+
+## Description
+A test agent for unit tests.
+
+## System Prompt
+You are a test agent. Follow instructions precisely.
+
+## Input Format
+A JSON object with a "task" field.
+
+## Output Format
+A JSON object with a "result" field.
+
+## Examples
+Input: {"task": "hello"}
+Output: {"result": "world"}
+"""
+    )
+
+    # config.toml
+    (agent_dir / "config.toml").write_text(
+        """model = "haiku"
+temperature = 0.5
+max_turns = 3
+tools = ["Read"]
+custom_tools = ["code_executor"]
+"""
+    )
+
+    # logic.py
+    (agent_dir / "logic.py").write_text(
+        """def parse_output(text: str) -> dict:
+    return {"parsed": text}
+"""
+    )
+
+    return tmp_path / "agents"
+
+
+@pytest.fixture
+def sample_agent_dir_minimal(tmp_path: Path) -> Path:
+    """Create a minimal agent directory (only agent.md)."""
+    agent_dir = tmp_path / "agents" / "minimal_agent"
+    agent_dir.mkdir(parents=True)
+
+    (agent_dir / "agent.md").write_text(
+        """# Minimal Agent
+
+## Description
+A minimal agent with defaults.
+
+## System Prompt
+You are minimal.
+"""
+    )
+
+    return tmp_path / "agents"

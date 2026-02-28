@@ -1,0 +1,20 @@
+[pipeline]
+agents = ["curator", "solver", "reflector", "organizer"]
+iterations = 1
+
+[pipeline.insight_finder]
+enabled = true
+frequency = 5  # Run every N iterations
+
+[storage]
+data_dir = "data"
+sqlite_db = "reflection.db"
+chroma_dir = "chroma"
+
+[embedder]
+model_name = "all-MiniLM-L6-v2"
+top_k = 5
+
+[code_executor]
+timeout_seconds = 30
+max_output_bytes = 65536
