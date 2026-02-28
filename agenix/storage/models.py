@@ -195,6 +195,19 @@ class ReflectionCard(Card):
     supporting_steps: list[int] = Field(default_factory=list)
 
 
+# --- Iteration Result ---
+
+
+class IterationResult(BaseModel):
+    """Result of a single pipeline iteration."""
+
+    run_tag: str
+    problem_id: str
+    trajectory_id: str
+    is_correct: bool = False
+    cards_created: list[str] = Field(default_factory=list)
+
+
 # --- Agent Definition (loaded from files) ---
 
 
