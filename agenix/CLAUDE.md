@@ -28,12 +28,12 @@ Tools are referenced as `mcp__<server-key>__<tool-name>` in `allowed_tools`.
 ## Storage
 
 - `storage/models.py` — Pydantic data models (Problem, Trajectory, Card, etc.)
-- `storage/sqlite_backend.py` — SQLite CRUD via aiosqlite
-- `knowledge/store.py` — Composite store (SQLite + ChromaDB)
+- `storage/fs_backend.py` — Filesystem CRUD (JSON files) + DuckDB query engine
+- `knowledge/store.py` — Composite store (filesystem + LanceDB)
 - `knowledge/embedder.py` — sentence-transformers wrapper
-- `knowledge/index.py` — ChromaDB vector index
+- `knowledge/index.py` — LanceDB vector index
 
 ## Pipeline
 
-`pipeline.py` orchestrates agent sequence: Curator → Solver → Reflector → Organizer.
+`pipeline.py` orchestrates agent sequence: Curator → Solver → Critic → Organizer.
 `scheduler.py` controls InsightFinder frequency.

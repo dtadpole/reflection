@@ -9,43 +9,63 @@
                             [Problems]
                                  │
                                  ▼
-   <Verifier> ◀───────────── SOLVER ◀──────────────── <Retriever>
+   <Verifier> ◀───────────── SOLVER ◀───────────────── <Retriever>
         │                     ▲  │                          ▲
         │                     │  │                          │
         └─────────────────────┘  │                          │
-               (loop)            ▼                          │
-                            [Trajectory]                    │
-                                 │                          │
+               (loop)            │                          │
                                  ▼                          │
-                             REFLECTOR                      │
-                                 │                          │
-                                 ▼                          │
-                          [Understandings]                  │
-                                 │                          │
-                    ┌────────────┴────────────┐             │
-                    │                         │             │
-                    ▼                         ▼             │
+                   ┌────────[Trajectory]───────┐            │
+                   │             │             │            │
+                   │             ▼             │            │
+                   │          CRITIC           │            │
+                   │             │             │            │
+                   │             ▼             │            │
+                   │     [ReflectionCards]     │            │
+                   ▼             │             ▼            │
+                   ┌-────────────┴─────────────┐            │
+                   │                           │            │
+                   ▼                           ▼            │
                ORGANIZER                INSIGHT_FINDER      │
-                    │                         │             │
+                   │                           │            │
+                   ▼                           ▼            │
              [KnowledgeCards]           [InsightCards]      │
-                    │                         │             │
-                    │                         │             │
-                    └──────────┬──────────────┘             │
-                               ▼                            │
-                       [Knowledge Base] ────────────────────┘
+                   │                           │            │
+                   └────────────┬──────────────┘            │
+                                ▼                           │
+                        [Knowledge Base] ───────────────────┘
 ```
 
 ## Data Layout
 
+All data is stored as JSON files in a structured filesystem. DuckDB is used as
+a query engine over these files (no persistent database).
+
 ```
 ~/.reflection/                             ← reflection_data_root
 ├── prod/                                  ← reflection_env
-│   ├── reflection.db                      ← shared across runs
-│   ├── chroma/                            ← shared across runs
-│   ├── run_20260228_143000/               ← run_tag
-│   │   ├── curator/                       ← per-agent outputs
-│   │   ├── solver/
+│   ├── problems/                          ← shared across runs
+│   │   ├── <problem_id>.json
 │   │   └── ...
+│   ├── cards/                             ← shared across runs (all card types)
+│   │   ├── <card_id>.json                 ← knowledge, insight, and reflection cards
+│   │   └── ...
+│   ├── lance/                             ← LanceDB vector index (shared)
+│   │   └── cards.lance/
+│   ├── queues/                            ← message queues (shared)
+│   │   ├── solver/
+│   │   │   ├── pending/<message_id>.json
+│   │   │   ├── processing/<message_id>.json
+│   │   │   ├── done/<message_id>.json
+│   │   │   └── failed/<message_id>.json
+│   │   ├── critic/
+│   │   ├── organizer/
+│   │   └── insight_finder/
+│   ├── run_20260228_143000/               ← run_tag
+│   │   ├── curator/
+│   │   │   └── <problem_id>.json          ← proposed problems
+│   │   ├── solver/
+│   │   │   └── <trajectory_id>.json       ← solver trajectories
 │   └── run_20260228_150000/
 │       └── ...
 ├── int/
@@ -53,6 +73,84 @@
 └── test_zhenchen/
     └── ...
 ```
+
+### Storage Rules
+
+- **Shared data** (`problems/`, `cards/`, `lance/`) lives at the env level, persists across runs
+- **Per-run data** lives under `<run_tag>/<agent_name>/`, one JSON file per entity
+- **Each JSON file** is a serialized Pydantic model (via `.model_dump(mode="json")`)
+- **DuckDB queries** scan JSON files on demand: `read_json_auto('problems/*.json')`
+- **LanceDB** stores vector embeddings for semantic search over cards
+- **No persistent database** — the filesystem *is* the database
+
+### Immutable Storage
+
+The card storage system is **conceptually immutable** to guarantee full
+traceability and lineage. Once a card is created, its content is never
+modified and it is never deleted.
+
+- **No modification**: Card content (`title`, `content`, `source_refs`) is
+  fixed at creation. Any update creates a new card.
+- **No deletion**: Cards are never removed from the filesystem. They are
+  archived, which removes them from the vector index but preserves them
+  on disk for lineage queries.
+- **Predecessor chain**: Every new card produced by revision, merge, or split
+  records `predecessor_ids` pointing to the cards it was derived from. This
+  enables walking the full ancestry chain back to the original sources.
+- **Superseded vs Archived**: Two distinct non-active statuses:
+  - `SUPERSEDED`: Card was replaced by revision, merge, or split. Always has
+    `superseded_by` pointing to the replacement card. Enables walking the
+    chain forward to find the current version.
+  - `ARCHIVED`: Card was manually retired. No successor exists. Used when
+    a card is no longer relevant (outdated, deprecated).
+
+## Data Lineage
+
+Every knowledge card carries an append-only lineage log that records how it was
+created and evolved. This enables tracing any card back to its source
+trajectories, reflection cards, and predecessor cards.
+
+### Lineage Model
+
+```
+Card
+├── status: active | superseded | archived
+├── source_refs: [{id, type}]          ← typed references (trajectory, reflection, card)
+├── source_ids: [str]                  ← kept in sync with source_refs for compat
+├── predecessor_ids: [str]             ← cards that were inputs (merge/split/revision)
+├── superseded_by: str | null          ← quick lookup for replacement card
+└── lineage: [LineageEvent]            ← append-only event log
+      ├── operation: create | revise | merge | split | supersede | archive
+      ├── timestamp, agent, run_tag
+      ├── source_refs                  ← new sources added by this event
+      ├── from_version                 ← for revise/merge: previous version
+      ├── merged_card_ids              ← for merge: cards absorbed
+      ├── split_from_card_id           ← for split: parent card
+      └── superseded_by                ← for supersede: replacement card
+```
+
+### Operations
+
+All operations follow the immutable storage principle: existing cards are
+never modified (only their status/superseded_by fields are updated for
+archiving). New content always goes into a new card.
+
+- **Create**: Card created from trajectory + reflection cards → `source_refs` populated
+- **Revise**: NEW card created with updated content. Old card superseded (`superseded_by`
+  → new card, new card `predecessor_ids` → old card). New card inherits `source_refs`
+  from old + any new sources.
+- **Merge**: NEW card created from multiple source cards. All sources superseded
+  (`superseded_by` → new card, new card `predecessor_ids` → source cards). New card gets
+  union of `source_refs`.
+- **Split**: NEW cards created from original. Original superseded. Each child gets
+  caller-specified `source_refs`. `predecessor_ids = [original_card_id]`
+- **Archive**: Card manually retired → status set to `archived`
+
+### Reverse Lookups
+
+- `find_cards_by_source(source_id)` → cards referencing that source
+- `get_source_trajectories(card)` → trajectory IDs from source_refs
+- `get_card_ancestry(card, all_cards)` → recursive predecessor chain
 
 ## Legend
 

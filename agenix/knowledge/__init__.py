@@ -1,1 +1,1 @@
-"""Knowledge base: ChromaDB + SQLite composite store."""
+"""Knowledge base: LanceDB + SQLite composite store."""

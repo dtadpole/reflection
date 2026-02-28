@@ -54,19 +54,22 @@ Default variant is `base` if not specified.
 
 ## Data Storage
 
-Path: `<reflection_data_root>/<reflection_env>/<run_tag>/<agent_name>/`
+Path: `<reflection_data_root>/<reflection_env>/`
 
 - Default `reflection_data_root`: `~/.reflection`
 - Available `reflection_env`: `prod`, `int`, `test_${USER}`
 - Default `run_tag`: `run_{YYYYMMDD_HHMMSS}`
-- SQLite and ChromaDB are **per-env shared** across runs
-- Agent outputs are **per-run** under `<run_tag>/<agent_name>/`
+- **Filesystem-based**: all data stored as JSON files, one file per entity
+- **Shared data** (`problems/`, `cards/`, `lance/`) at env level, persists across runs
+- **Per-run data** under `<run_tag>/<agent_name>/`, one JSON per entity
+- **DuckDB** as query engine over JSON files (no persistent DB)
+- **LanceDB** for vector embeddings (semantic search over cards)
 
 ## Key Patterns
 
 - Custom tools: `@tool` decorator + `create_sdk_mcp_server` from `claude-agent-sdk`
 - Tool references: `mcp__<server-key>__<tool-name>` in `allowed_tools`
 - Data models: Pydantic v2 in `agenix/storage/models.py`
-- Storage: SQLite (relational) + ChromaDB (vector), both embedded
+- Storage: JSON files (filesystem) + DuckDB (query) + LanceDB (vector)
 - Embeddings: `sentence-transformers` (`all-MiniLM-L6-v2`), local CPU
-- Pipeline: CURATOR → SOLVER → REFLECTOR → ORGANIZER (+ INSIGHT_FINDER periodically)
+- Pipeline: CURATOR → SOLVER → CRITIC → ORGANIZER (+ INSIGHT_FINDER periodically)

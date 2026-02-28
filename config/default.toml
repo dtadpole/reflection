@@ -1,5 +1,5 @@
 [pipeline]
-agents = ["curator", "solver", "reflector", "organizer"]
+agents = ["curator", "solver", "critic", "organizer"]
 iterations = 1
 
 [pipeline.insight_finder]
@@ -7,9 +7,9 @@ enabled = true
 frequency = 5  # Run every N iterations
 
 [storage]
-data_dir = "data"
-sqlite_db = "reflection.db"
-chroma_dir = "chroma"
+data_root = "~/.reflection"
+env = "prod"
+lance_dir = "lance"
 
 [embedder]
 model_name = "all-MiniLM-L6-v2"

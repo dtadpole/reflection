@@ -4,21 +4,25 @@ from __future__ import annotations
 
 from agenix.storage.models import (
     AgentConfig,
+    CardStatus,
     CardType,
     Difficulty,
     HypothesisStatus,
     InsightCard,
     KnowledgeCard,
+    LineageEvent,
+    LineageOperation,
     LoadedAgent,
     Problem,
     ProblemStatus,
+    ReflectionCard,
+    ReflectionCategory,
+    SourceReference,
     StepType,
     TestCase,
     TestResult,
     Trajectory,
     TrajectoryStep,
-    Understanding,
-    UnderstandingCategory,
 )
 
 
@@ -152,28 +156,62 @@ class TestTestResult:
         assert "ValueError" in tr.error
 
 
-class TestUnderstanding:
+class TestReflectionCard:
     def test_create(self):
-        u = Understanding(
-            trajectory_id="t1",
+        r = ReflectionCard(
+            title="DP Reflection",
             content="Dynamic programming works by breaking problems into subproblems",
-            category=UnderstandingCategory.ALGORITHM,
+            trajectory_id="t1",
+            category=ReflectionCategory.ALGORITHM,
             confidence=0.8,
             supporting_steps=[0, 2, 4],
         )
-        assert u.category == UnderstandingCategory.ALGORITHM
-        assert u.confidence == 0.8
-        assert len(u.supporting_steps) == 3
+        assert r.card_type == CardType.REFLECTION
+        assert r.category == ReflectionCategory.ALGORITHM
+        assert r.confidence == 0.8
+        assert len(r.supporting_steps) == 3
+        assert r.trajectory_id == "t1"
+        assert r.card_id  # inherited from Card
+        assert r.version == 1
 
     def test_confidence_bounds(self):
         import pytest
 
         with pytest.raises(Exception):
-            Understanding(
-                trajectory_id="t1",
+            ReflectionCard(
+                title="Test",
                 content="test",
+                trajectory_id="t1",
                 confidence=1.5,
             )
+
+    def test_inherits_card_fields(self):
+        r = ReflectionCard(
+            title="Test",
+            content="Content",
+            trajectory_id="t1",
+            tags=["dp"],
+        )
+        assert r.status == CardStatus.ACTIVE
+        assert r.lineage == []
+        assert r.source_refs == []
+        assert r.tags == ["dp"]
+
+    def test_json_roundtrip(self):
+        r = ReflectionCard(
+            title="Test",
+            content="Content",
+            trajectory_id="t1",
+            category=ReflectionCategory.PATTERN,
+            confidence=0.9,
+            supporting_steps=[1, 3],
+        )
+        json_str = r.model_dump_json()
+        r2 = ReflectionCard.model_validate_json(json_str)
+        assert r2.card_type == CardType.REFLECTION
+        assert r2.trajectory_id == "t1"
+        assert r2.category == ReflectionCategory.PATTERN
+        assert r2.confidence == 0.9
 
 
 class TestKnowledgeCard:
@@ -226,6 +264,109 @@ class TestInsightCard:
         )
         assert ic.hypothesis_status == HypothesisStatus.PROPOSED
         assert ic.experiments_run == 0
+
+
+class TestCardStatus:
+    def test_values(self):
+        assert CardStatus.ACTIVE == "active"
+        assert CardStatus.SUPERSEDED == "superseded"
+        assert CardStatus.ARCHIVED == "archived"
+
+
+class TestLineageOperation:
+    def test_values(self):
+        assert LineageOperation.CREATE == "create"
+        assert LineageOperation.REVISE == "revise"
+        assert LineageOperation.MERGE == "merge"
+        assert LineageOperation.SPLIT == "split"
+        assert LineageOperation.SUPERSEDE == "supersede"
+        assert LineageOperation.ARCHIVE == "archive"
+
+
+class TestSourceReference:
+    def test_create(self):
+        ref = SourceReference(id="traj-001", type="trajectory")
+        assert ref.id == "traj-001"
+        assert ref.type == "trajectory"
+
+    def test_json_roundtrip(self):
+        ref = SourceReference(id="refl-001", type="reflection")
+        data = ref.model_dump()
+        ref2 = SourceReference.model_validate(data)
+        assert ref == ref2
+
+
+class TestLineageEvent:
+    def test_create_event(self):
+        event = LineageEvent(
+            operation=LineageOperation.CREATE,
+            agent="organizer",
+            run_tag="run_001",
+            source_refs=[SourceReference(id="traj-1", type="trajectory")],
+        )
+        assert event.operation == LineageOperation.CREATE
+        assert event.agent == "organizer"
+        assert len(event.source_refs) == 1
+
+    def test_merge_event(self):
+        event = LineageEvent(
+            operation=LineageOperation.MERGE,
+            merged_card_ids=["card-a", "card-b"],
+            from_version=2,
+        )
+        assert event.merged_card_ids == ["card-a", "card-b"]
+        assert event.from_version == 2
+
+    def test_defaults(self):
+        event = LineageEvent(operation=LineageOperation.ARCHIVE)
+        assert event.agent == ""
+        assert event.run_tag == ""
+        assert event.source_refs == []
+        assert event.from_version is None
+        assert event.merged_card_ids == []
+        assert event.split_from_card_id is None
+        assert event.superseded_by is None
+        assert event.description == ""
+
+
+class TestCardLineageFields:
+    def test_new_fields_have_defaults(self):
+        card = KnowledgeCard(title="Test", content="Content")
+        assert card.status == CardStatus.ACTIVE
+        assert card.lineage == []
+        assert card.source_refs == []
+        assert card.superseded_by is None
+        assert card.predecessor_ids == []
+
+    def test_insight_card_inherits_lineage_fields(self):
+        card = InsightCard(title="Test", content="Content")
+        assert card.status == CardStatus.ACTIVE
+        assert card.lineage == []
+        assert card.source_refs == []
+
+    def test_card_with_lineage_json_roundtrip(self):
+        card = KnowledgeCard(
+            title="Test",
+            content="Content",
+            status=CardStatus.SUPERSEDED,
+            superseded_by="card-new",
+            predecessor_ids=["card-old"],
+            source_refs=[SourceReference(id="traj-1", type="trajectory")],
+            lineage=[
+                LineageEvent(
+                    operation=LineageOperation.CREATE,
+                    agent="organizer",
+                    source_refs=[SourceReference(id="traj-1", type="trajectory")],
+                )
+            ],
+        )
+        json_str = card.model_dump_json()
+        restored = KnowledgeCard.model_validate_json(json_str)
+        assert restored.status == CardStatus.SUPERSEDED
+        assert restored.superseded_by == "card-new"
+        assert restored.predecessor_ids == ["card-old"]
+        assert len(restored.lineage) == 1
+        assert restored.lineage[0].operation == LineageOperation.CREATE
 
 
 class TestAgentConfig:
