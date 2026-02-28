@@ -40,7 +40,9 @@ uv run ruff check . --fix                  # Auto-fix lint issues
 
 ## Agent Definitions
 
-Each agent lives in `agents/<name>/` with:
+Agents are organized as `agents/<agent_name>/<variant>/`. The initial variant is `base`.
+
+Each variant folder contains:
 
 - **`agent.md`** (required) — Sections: `# Name`, `## Description`, `## System Prompt`, `## Input Format`, `## Output Format`, `## Examples`
 - **`config.yaml`** (required) — `model`, `temperature`, `max_turns`, `tools`, `custom_tools`
@@ -48,6 +50,7 @@ Each agent lives in `agents/<name>/` with:
 - **`tools.md`** (optional) — Detailed tool specifications
 
 Loader (`agenix/loader.py`) parses `agent.md` sections, reads `config.yaml`, detects `logic.py`.
+Default variant is `base` if not specified.
 
 ## Data Storage
 

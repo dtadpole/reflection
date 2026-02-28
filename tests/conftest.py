@@ -15,12 +15,12 @@ def tmp_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def sample_agent_dir(tmp_path: Path) -> Path:
-    """Create a sample agent directory structure for testing."""
-    agent_dir = tmp_path / "agents" / "test_agent"
-    agent_dir.mkdir(parents=True)
+    """Create a sample agent directory: agents/test_agent/base/"""
+    variant_dir = tmp_path / "agents" / "test_agent" / "base"
+    variant_dir.mkdir(parents=True)
 
     # agent.md
-    (agent_dir / "agent.md").write_text(
+    (variant_dir / "agent.md").write_text(
         """# Test Agent
 
 ## Description
@@ -42,7 +42,7 @@ Output: {"result": "world"}
     )
 
     # config.toml
-    (agent_dir / "config.toml").write_text(
+    (variant_dir / "config.toml").write_text(
         """model = "haiku"
 temperature = 0.5
 max_turns = 3
@@ -52,7 +52,7 @@ custom_tools = ["code_executor"]
     )
 
     # logic.py
-    (agent_dir / "logic.py").write_text(
+    (variant_dir / "logic.py").write_text(
         """def parse_output(text: str) -> dict:
     return {"parsed": text}
 """
@@ -63,11 +63,11 @@ custom_tools = ["code_executor"]
 
 @pytest.fixture
 def sample_agent_dir_minimal(tmp_path: Path) -> Path:
-    """Create a minimal agent directory (only agent.md)."""
-    agent_dir = tmp_path / "agents" / "minimal_agent"
-    agent_dir.mkdir(parents=True)
+    """Create a minimal agent directory: agents/minimal_agent/base/ (only agent.md)."""
+    variant_dir = tmp_path / "agents" / "minimal_agent" / "base"
+    variant_dir.mkdir(parents=True)
 
-    (agent_dir / "agent.md").write_text(
+    (variant_dir / "agent.md").write_text(
         """# Minimal Agent
 
 ## Description

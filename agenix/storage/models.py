@@ -171,9 +171,10 @@ class AgentConfig(BaseModel):
 
 
 class LoadedAgent(BaseModel):
-    """An agent definition loaded from the agents/ directory."""
+    """An agent definition loaded from the agents/<name>/<variant>/ directory."""
 
     name: str
+    variant: str = "base"
     description: str = ""
     system_prompt: str = ""
     input_format: str = ""

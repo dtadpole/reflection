@@ -1,6 +1,8 @@
 # Agent Definitions
 
-Each agent lives in `agents/<name>/` with these files:
+Agents are organized as `agents/<agent_name>/<variant>/`. The initial variant is `base`.
+
+Each variant folder contains these files:
 
 ## Required Files
 

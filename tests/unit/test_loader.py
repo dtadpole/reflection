@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from agenix.loader import list_agents, load_agent, parse_agent_md
+from agenix.loader import list_agents, list_variants, load_agent, parse_agent_md
 
 
 class TestParseAgentMd:
@@ -74,6 +74,7 @@ class TestLoadAgent:
     def test_load_full_agent(self, sample_agent_dir: Path):
         agent = load_agent("test_agent", agents_dir=sample_agent_dir)
         assert agent.name == "Test Agent"
+        assert agent.variant == "base"
         assert agent.description == "A test agent for unit tests."
         assert "test agent" in agent.system_prompt.lower()
         assert agent.config.model == "haiku"
@@ -87,11 +88,16 @@ class TestLoadAgent:
     def test_load_minimal_agent(self, sample_agent_dir_minimal: Path):
         agent = load_agent("minimal_agent", agents_dir=sample_agent_dir_minimal)
         assert agent.name == "Minimal Agent"
+        assert agent.variant == "base"
         assert agent.description == "A minimal agent with defaults."
-        # Default config values
         assert agent.config.model == "sonnet"
         assert agent.config.temperature == 0.7
         assert agent.logic_module_path is None
+
+    def test_load_specific_variant(self, sample_agent_dir: Path):
+        agent = load_agent("test_agent", variant="base", agents_dir=sample_agent_dir)
+        assert agent.variant == "base"
+        assert agent.name == "Test Agent"
 
     def test_load_nonexistent_agent(self, tmp_path: Path):
         agents_dir = tmp_path / "agents"
@@ -99,12 +105,15 @@ class TestLoadAgent:
         with pytest.raises(FileNotFoundError):
             load_agent("nonexistent", agents_dir=agents_dir)
 
+    def test_load_nonexistent_variant(self, sample_agent_dir: Path):
+        with pytest.raises(FileNotFoundError):
+            load_agent("test_agent", variant="v2", agents_dir=sample_agent_dir)
+
     def test_load_agent_missing_md(self, tmp_path: Path):
         agents_dir = tmp_path / "agents"
-        agent_dir = agents_dir / "bad_agent"
-        agent_dir.mkdir(parents=True)
-        # Create dir but no agent.md
-        (agent_dir / "config.toml").write_text('model = "haiku"')
+        variant_dir = agents_dir / "bad_agent" / "base"
+        variant_dir.mkdir(parents=True)
+        (variant_dir / "config.toml").write_text('model = "haiku"')
         with pytest.raises(FileNotFoundError):
             load_agent("bad_agent", agents_dir=agents_dir)
 
@@ -121,13 +130,34 @@ class TestListAgents:
 
     def test_list_ignores_non_agent_dirs(self, tmp_path: Path):
         agents_dir = tmp_path / "agents"
-        # Dir without agent.md
+        # Dir without any variant containing agent.md
         (agents_dir / "not_an_agent").mkdir(parents=True)
-        # Dir with agent.md
-        real = agents_dir / "real_agent"
-        real.mkdir()
-        (real / "agent.md").write_text(
+        # Dir with a variant containing agent.md
+        variant_dir = agents_dir / "real_agent" / "base"
+        variant_dir.mkdir(parents=True)
+        (variant_dir / "agent.md").write_text(
             "# Real Agent\n\n## Description\nReal.\n\n## System Prompt\nHi."
         )
         agents = list_agents(agents_dir=agents_dir)
         assert agents == ["real_agent"]
+
+
+class TestListVariants:
+    def test_list_variants(self, sample_agent_dir: Path):
+        variants = list_variants("test_agent", agents_dir=sample_agent_dir)
+        assert variants == ["base"]
+
+    def test_list_multiple_variants(self, sample_agent_dir: Path):
+        # Add a second variant
+        v2_dir = sample_agent_dir / "test_agent" / "v2"
+        v2_dir.mkdir()
+        (v2_dir / "agent.md").write_text(
+            "# Test Agent V2\n\n## Description\nV2.\n\n## System Prompt\nV2."
+        )
+        variants = list_variants("test_agent", agents_dir=sample_agent_dir)
+        assert variants == ["base", "v2"]
+
+    def test_list_variants_nonexistent(self, tmp_path: Path):
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        assert list_variants("nope", agents_dir=agents_dir) == []

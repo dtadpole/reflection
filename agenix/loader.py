@@ -1,4 +1,4 @@
-"""Load agent definitions from agents/<name>/ folders."""
+"""Load agent definitions from agents/<name>/<variant>/ folders."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from agenix.storage.models import AgentConfig, LoadedAgent
 
 # Default agents directory relative to project root
 _DEFAULT_AGENTS_DIR = Path(__file__).parent.parent / "agents"
+_DEFAULT_VARIANT = "base"
 
 
 def parse_agent_md(text: str) -> dict[str, str]:
@@ -63,9 +64,9 @@ def load_agent_config(config_path: Path) -> AgentConfig:
     return AgentConfig.model_validate(raw)
 
 
-def load_agent_logic(logic_path: Path, agent_name: str) -> ModuleType:
+def load_agent_logic(logic_path: Path, agent_name: str, variant: str) -> ModuleType:
     """Dynamically import an agent's logic.py module."""
-    module_name = f"agents.{agent_name}.logic"
+    module_name = f"agents.{agent_name}.{variant}.logic"
     spec = importlib.util.spec_from_file_location(module_name, logic_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load module from {logic_path}")
@@ -75,8 +76,14 @@ def load_agent_logic(logic_path: Path, agent_name: str) -> ModuleType:
     return module
 
 
-def load_agent(agent_name: str, agents_dir: Optional[Path] = None) -> LoadedAgent:
+def load_agent(
+    agent_name: str,
+    variant: str = _DEFAULT_VARIANT,
+    agents_dir: Optional[Path] = None,
+) -> LoadedAgent:
     """Load a complete agent definition from its folder.
+
+    Path: agents/<agent_name>/<variant>/
 
     Reads:
     - agent.md → description, system_prompt, input_format, output_format, examples
@@ -86,23 +93,23 @@ def load_agent(agent_name: str, agents_dir: Optional[Path] = None) -> LoadedAgen
     if agents_dir is None:
         agents_dir = _DEFAULT_AGENTS_DIR
 
-    agent_dir = agents_dir / agent_name
-    if not agent_dir.is_dir():
-        raise FileNotFoundError(f"Agent directory not found: {agent_dir}")
+    variant_dir = agents_dir / agent_name / variant
+    if not variant_dir.is_dir():
+        raise FileNotFoundError(f"Agent variant directory not found: {variant_dir}")
 
     # Parse agent.md
-    agent_md_path = agent_dir / "agent.md"
+    agent_md_path = variant_dir / "agent.md"
     if not agent_md_path.exists():
-        raise FileNotFoundError(f"agent.md not found in {agent_dir}")
+        raise FileNotFoundError(f"agent.md not found in {variant_dir}")
 
     sections = parse_agent_md(agent_md_path.read_text())
 
     # Load config.toml
-    config_path = agent_dir / "config.toml"
+    config_path = variant_dir / "config.toml"
     config = load_agent_config(config_path) if config_path.exists() else AgentConfig()
 
     # Check for logic.py
-    logic_path = agent_dir / "logic.py"
+    logic_path = variant_dir / "logic.py"
     logic_module_path = str(logic_path) if logic_path.exists() else None
 
     return LoadedAgent(
@@ -114,6 +121,7 @@ def load_agent(agent_name: str, agents_dir: Optional[Path] = None) -> LoadedAgen
         examples=sections.get("examples", ""),
         config=config,
         logic_module_path=logic_module_path,
+        variant=variant,
     )
 
 
@@ -128,5 +136,34 @@ def list_agents(agents_dir: Optional[Path] = None) -> list[str]:
     return sorted(
         d.name
         for d in agents_dir.iterdir()
+        if d.is_dir() and _has_any_variant(d)
+    )
+
+
+def list_variants(
+    agent_name: str, agents_dir: Optional[Path] = None
+) -> list[str]:
+    """List all available variants for an agent."""
+    if agents_dir is None:
+        agents_dir = _DEFAULT_AGENTS_DIR
+
+    agent_dir = agents_dir / agent_name
+    if not agent_dir.is_dir():
+        return []
+
+    return sorted(
+        d.name
+        for d in agent_dir.iterdir()
         if d.is_dir() and (d / "agent.md").exists()
+    )
+
+
+def _has_any_variant(agent_dir: Path) -> bool:
+    """Check if an agent directory has at least one variant with agent.md."""
+    if not agent_dir.is_dir():
+        return False
+    return any(
+        (d / "agent.md").exists()
+        for d in agent_dir.iterdir()
+        if d.is_dir()
     )
