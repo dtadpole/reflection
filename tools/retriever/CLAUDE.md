@@ -43,12 +43,9 @@ The retriever is a thin MCP wrapper around `KnowledgeStore.search()`. It convert
 ## Testing
 
 ```bash
-# Unit tests for rerank variant (mocked store + reranker)
-uv run pytest tests/unit/test_retriever_rerank.py -v
+# Unit tests — shared contract + variant-specific (mocked store + reranker)
+uv run pytest tests/unit/test_retriever.py -v
 
-# Unit-style integration tests for baseline (local embedder, no remote service needed)
+# Integration tests (local embedder + real LanceDB, baseline only)
 uv run pytest tests/integration/test_retriever_tool.py -v -s
-
-# Tests cover: query, empty query, top_k, type filter, invalid type,
-# semantic quality (correct ranking), lineage-aware exclusion
 ```
