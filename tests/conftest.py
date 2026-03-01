@@ -44,7 +44,7 @@ Output: {"result": "world"}
     # config.yaml
     (variant_dir / "config.yaml").write_text(
         "model: haiku\ntemperature: 0.5\nmax_turns: 3\n"
-        "tools:\n  - Read\ncustom_tools:\n  - code_executor\n"
+        "tools:\n  - Read\ncustom_tools:\n  - verifier\n"
     )
 
     # logic.py

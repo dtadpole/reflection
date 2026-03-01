@@ -47,7 +47,6 @@ def _bootstrap(config: ReflectionConfig):
     """
     from agenix.pipeline import Pipeline
     from agenix.runner import ClaudeRunner
-    from agenix.tools import create_code_executor_tool
     from agenix.tools.loader import load_tool
     from agenix.tools.registry import ToolRegistry
     from tools.knowledge.baseline.store import KnowledgeStore
@@ -74,8 +73,6 @@ def _bootstrap(config: ReflectionConfig):
     else:
         retriever_def = load_tool("retriever", variant="baseline")
         registry.register(retriever_def.create_fn(knowledge_store=store))
-
-    registry.register(create_code_executor_tool(config.code_executor))
 
     # Load verifier tool (kb_eval variant) if endpoints are configured
     if config.services.endpoints:

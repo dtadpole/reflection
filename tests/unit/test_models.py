@@ -104,19 +104,19 @@ class TestTrajectory:
                 step_index=1,
                 step_type=StepType.ACTION,
                 content="Running code",
-                tool_name="code_executor",
-                tool_input='print("hello")',
-                tool_output="hello",
+                tool_name="verifier",
+                tool_input='{"reference_code": "...", "generated_code": "..."}',
+                tool_output='{"compiled": true, "correctness": true}',
             ),
             TrajectoryStep(
                 step_index=2,
                 step_type=StepType.OBSERVATION,
-                content="Code executed successfully",
+                content="Verification completed successfully",
             ),
         ]
         t = Trajectory(problem_id="p1", steps=steps)
         assert len(t.steps) == 3
-        assert t.steps[1].tool_name == "code_executor"
+        assert t.steps[1].tool_name == "verifier"
 
     def test_serialization_roundtrip(self):
         t = Trajectory(
@@ -384,7 +384,7 @@ class TestAgentConfig:
             temperature=0.3,
             max_turns=20,
             tools=["Read", "Grep"],
-            custom_tools=["code_executor"],
+            custom_tools=["verifier"],
         )
         assert cfg.model == "opus"
         assert cfg.max_turns == 20

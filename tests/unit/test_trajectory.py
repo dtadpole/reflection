@@ -32,8 +32,8 @@ class TestTrajectoryHelpers:
             t,
             StepType.ACTION,
             "Running code",
-            tool_name="code_executor",
-            tool_input="print(42)",
+            tool_name="verifier",
+            tool_input='{"reference_code": "...", "generated_code": "..."}',
         )
         assert step2.step_index == 1
         assert len(t.steps) == 2

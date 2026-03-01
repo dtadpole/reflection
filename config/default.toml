@@ -15,10 +15,6 @@ lance_dir = "lance"
 model_name = "all-MiniLM-L6-v2"
 top_k = 5
 
-[code_executor]
-timeout_seconds = 30
-max_output_bytes = 65536
-
 [services]
 # Remote service endpoints are configured per-host.
 # See config/hosts.yaml for endpoint definitions.

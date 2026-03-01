@@ -81,7 +81,7 @@ class TestLoadAgent:
         assert agent.config.temperature == 0.5
         assert agent.config.max_turns == 3
         assert agent.config.tools == ["Read"]
-        assert agent.config.custom_tools == ["code_executor"]
+        assert agent.config.custom_tools == ["verifier"]
         assert agent.logic_module_path is not None
         assert agent.logic_module_path.endswith("logic.py")
 

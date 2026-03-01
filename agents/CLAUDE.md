@@ -20,7 +20,7 @@ Each variant folder contains these files:
   temperature: 0.7
   max_turns: 10
   tools: [Read, Bash]                # Built-in Claude tools
-  custom_tools: [code_executor]      # agenix custom tools
+  custom_tools: [knowledge_retriever] # agenix custom tools
   ```
 
 ## Optional Files

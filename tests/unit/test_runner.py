@@ -83,12 +83,12 @@ class TestBuildOptions:
         agent = _make_agent(
             config=AgentConfig(
                 tools=["Read"],
-                custom_tools=["code_executor"],
+                custom_tools=["verifier"],
             ),
         )
         opts = runner._build_options(agent)
         assert "Read" in opts.allowed_tools
-        assert "mcp__reflection__code_executor" in opts.allowed_tools
+        assert "mcp__reflection__verifier" in opts.allowed_tools
 
     def test_empty_system_prompt(self):
         runner = ClaudeRunner()

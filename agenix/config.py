@@ -62,10 +62,6 @@ class EmbedderConfig(BaseModel):
     top_k: int = 5
 
 
-class CodeExecutorConfig(BaseModel):
-    timeout_seconds: int = 30
-    max_output_bytes: int = 65536
-
 
 class KbEvalServerConfig(BaseModel):
     host: str = "0.0.0.0"
@@ -164,7 +160,6 @@ class ReflectionConfig(BaseModel):
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
-    code_executor: CodeExecutorConfig = Field(default_factory=CodeExecutorConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     tunnels: TunnelsConfig = Field(default_factory=TunnelsConfig)
 
