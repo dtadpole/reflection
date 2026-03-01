@@ -18,3 +18,16 @@ top_k = 5
 [code_executor]
 timeout_seconds = 30
 max_output_bytes = 65536
+
+[services]
+# Remote service endpoints are configured per-host.
+# See config/hosts.yaml for endpoint definitions.
+
+[services.kb_eval_server]
+host = "0.0.0.0"
+port = 8456
+devices = ["cuda:0"]
+max_critical_time = 120
+max_timeout = 600
+code_type = "triton"
+compile_pytorch = false

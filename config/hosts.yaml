@@ -1,0 +1,31 @@
+# Remote GPU hosts for kbEval deployment.
+# Each entry becomes a ServiceEndpoint in config.services.endpoints.
+#
+# Usage:
+#   reflection services deploy _one         # Deploy & start via systemd
+#   reflection services stop _one           # Stop service
+#   reflection services status              # Health-check all
+#   reflection services logs _one           # View service logs
+
+endpoints:
+  - name: _one
+    host: 1and1
+    port: 41922
+    user: centos
+    kb_eval_port: 41981
+    kb_eval:
+      base_url: "http://1and1:41981"
+      timeout: 300
+      retry_count: 4
+      retry_interval: 3.0
+
+  - name: _two
+    host: 1and1
+    port: 42922
+    user: centos
+    kb_eval_port: 42981
+    kb_eval:
+      base_url: "http://1and1:42981"
+      timeout: 300
+      retry_count: 4
+      retry_interval: 3.0

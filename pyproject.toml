@@ -15,6 +15,11 @@ dependencies = [
     "tomli>=2.0;python_version<'3.11'",
     "tomli-w>=1.0",
     "python-ulid>=3.1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "httpx>=0.28",
+    "asyncssh>=2.17",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -40,7 +45,7 @@ extend-exclude = ["data/"]
 select = ["E", "F", "I", "W"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["agenix", "cli"]
+packages = ["agenix", "cli", "services"]
 
 [build-system]
 requires = ["hatchling"]
