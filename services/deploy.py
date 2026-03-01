@@ -41,6 +41,20 @@ _TEXT_EMBEDDING_FILES = [
 _TEXT_EMBEDDING_REQUIREMENTS = "services/text_embedding/baseline/deploy/requirements.txt"
 _TEXT_EMBEDDING_UNIT_NAME = "text-embedding"
 
+# Reranker service (FastAPI + vLLM backend)
+_RERANKER_FILES = [
+    "services/__init__.py",
+    "services/models.py",
+    "services/reranker/__init__.py",
+    "services/reranker/baseline/__init__.py",
+    "services/reranker/baseline/__main__.py",
+    "services/reranker/baseline/server.py",
+    "services/reranker/baseline/client.py",
+]
+_RERANKER_REQUIREMENTS = "services/reranker/baseline/deploy/requirements.txt"
+_RERANKER_UNIT_NAME = "reranker"
+_RERANKER_VLLM_UNIT_NAME = "reranker-vllm"
+
 
 def _render_text_embedding_unit(port: int, model: str, dimension: int, device: str) -> str:
     """Render the systemd unit file for text embedding service."""
@@ -87,6 +101,60 @@ def _render_unit(port: int, devices: str) -> str:
         [Service]
         Type=simple
         WorkingDirectory=%h/.reflection/services/kb_eval
+        ExecStart={exec_start}
+        Restart=always
+        RestartSec=5
+
+        [Install]
+        WantedBy=default.target
+    """)
+
+
+def _render_reranker_vllm_unit(
+    vllm_port: int, model: str, device: str
+) -> str:
+    """Render the systemd unit file for the reranker vLLM backend."""
+    exec_start = (
+        "%h/.reflection/services/reranker/.venv/bin/vllm"
+        f" serve {model}"
+        f" --port {vllm_port}"
+        " --dtype float16"
+        " --max-model-len 4096"
+    )
+    return textwrap.dedent(f"""\
+        [Unit]
+        Description=vLLM server for reranker ({model})
+        After=network.target
+
+        [Service]
+        Type=simple
+        WorkingDirectory=%h/.reflection/services/reranker
+        ExecStart={exec_start}
+        Restart=always
+        RestartSec=10
+
+        [Install]
+        WantedBy=default.target
+    """)
+
+
+def _render_reranker_unit(port: int, vllm_port: int, model: str) -> str:
+    """Render the systemd unit file for the reranker FastAPI wrapper."""
+    exec_start = (
+        "%h/.reflection/services/reranker/.venv/bin/python"
+        " -m services.reranker.baseline"
+        f" --host 0.0.0.0 --port {port}"
+        f" --vllm-url http://localhost:{vllm_port}"
+        f" --model {model}"
+    )
+    return textwrap.dedent(f"""\
+        [Unit]
+        Description=Reranker FastAPI server (cross-encoder via vLLM)
+        After=network.target {_RERANKER_VLLM_UNIT_NAME}.service
+
+        [Service]
+        Type=simple
+        WorkingDirectory=%h/.reflection/services/reranker
         ExecStart={exec_start}
         Restart=always
         RestartSec=5
@@ -526,6 +594,267 @@ class ServiceDeployer:
             )
             conn.close()
             return result.stdout
+
+        except Exception as e:
+            return f"Failed to get status for {endpoint.name}: {e}"
+
+    # --- Reranker methods ---
+
+    async def deploy_reranker(self, endpoint: ServiceEndpoint) -> bool:
+        """Deploy reranker service (vLLM + FastAPI) to a remote endpoint."""
+        try:
+            import asyncio
+
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            home_result = await conn.run("echo $HOME", check=True)
+            remote_home = home_result.stdout.strip()
+            remote_base = f"{remote_home}/.reflection/services/reranker"
+
+            await conn.run(
+                f"mkdir -p {remote_base}/services/reranker/baseline "
+                f"{remote_home}/.config/systemd/user",
+                check=True,
+            )
+
+            project_root = Path(__file__).parent.parent
+            async with conn.start_sftp_client() as sftp:
+                for rel_path in _RERANKER_FILES:
+                    local = project_root / rel_path
+                    if not local.exists():
+                        logger.warning("File not found: %s", local)
+                        continue
+                    remote = f"{remote_base}/{rel_path}"
+                    await sftp.put(str(local), remote)
+
+                req_local = project_root / _RERANKER_REQUIREMENTS
+                if req_local.exists():
+                    await sftp.put(str(req_local), f"{remote_base}/requirements.txt")
+
+            # Create venv and install dependencies (including vllm)
+            venv_path = f"{remote_base}/.venv"
+            uv_bin = f"{remote_home}/.local/bin/uv"
+            venv_check = await conn.run(f"test -f {venv_path}/bin/python")
+            if venv_check.exit_status != 0:
+                logger.info("Creating venv on %s ...", endpoint.name)
+                await conn.run(f"{uv_bin} venv {venv_path}", check=True)
+                logger.info("Installing dependencies on %s ...", endpoint.name)
+                await conn.run(
+                    f"{uv_bin} pip install -p {venv_path}/bin/python "
+                    f"-r {remote_base}/requirements.txt",
+                    check=True,
+                )
+                # Install vllm separately (large package)
+                logger.info("Installing vllm on %s ...", endpoint.name)
+                await conn.run(
+                    f"{uv_bin} pip install -p {venv_path}/bin/python vllm",
+                    check=True,
+                )
+                logger.info("Dependencies installed on %s", endpoint.name)
+            else:
+                logger.info("Updating dependencies on %s ...", endpoint.name)
+                await conn.run(
+                    f"{uv_bin} pip install -q -p {venv_path}/bin/python "
+                    f"-r {remote_base}/requirements.txt",
+                )
+
+            server_cfg = self._config.reranker_server
+
+            # Write vLLM systemd unit
+            vllm_unit_content = _render_reranker_vllm_unit(
+                vllm_port=server_cfg.vllm_port,
+                model=server_cfg.model_name,
+                device=server_cfg.device,
+            )
+            vllm_unit_path = (
+                f"{remote_home}/.config/systemd/user"
+                f"/{_RERANKER_VLLM_UNIT_NAME}.service"
+            )
+            r = await conn.run(
+                f"cat > {vllm_unit_path} << 'UNIT_EOF'\n{vllm_unit_content}UNIT_EOF"
+            )
+            if r.exit_status != 0:
+                logger.error("Failed to write vLLM unit file: %s", r.stderr)
+                conn.close()
+                return False
+
+            # Write FastAPI wrapper systemd unit
+            unit_content = _render_reranker_unit(
+                port=endpoint.reranker_port,
+                vllm_port=server_cfg.vllm_port,
+                model=server_cfg.model_name,
+            )
+            unit_path = (
+                f"{remote_home}/.config/systemd/user"
+                f"/{_RERANKER_UNIT_NAME}.service"
+            )
+            r = await conn.run(
+                f"cat > {unit_path} << 'UNIT_EOF'\n{unit_content}UNIT_EOF"
+            )
+            if r.exit_status != 0:
+                logger.error("Failed to write reranker unit file: %s", r.stderr)
+                conn.close()
+                return False
+
+            await conn.run("loginctl enable-linger $(whoami) 2>/dev/null || true")
+            await conn.run("systemctl --user daemon-reload", check=True)
+
+            # Start vLLM first, then FastAPI wrapper
+            await conn.run(
+                f"systemctl --user enable {_RERANKER_VLLM_UNIT_NAME}", check=True
+            )
+            await conn.run(
+                f"systemctl --user restart {_RERANKER_VLLM_UNIT_NAME}", check=True
+            )
+            # Wait for vLLM to load the model
+            logger.info("Waiting for vLLM model to load on %s ...", endpoint.name)
+            await asyncio.sleep(30)
+
+            await conn.run(
+                f"systemctl --user enable {_RERANKER_UNIT_NAME}", check=True
+            )
+            await conn.run(
+                f"systemctl --user restart {_RERANKER_UNIT_NAME}", check=True
+            )
+            await asyncio.sleep(5)
+
+            # Check both units are active
+            vllm_status = await conn.run(
+                f"systemctl --user is-active {_RERANKER_VLLM_UNIT_NAME}"
+            )
+            api_status = await conn.run(
+                f"systemctl --user is-active {_RERANKER_UNIT_NAME}"
+            )
+            vllm_active = vllm_status.stdout.strip() == "active"
+            api_active = api_status.stdout.strip() == "active"
+
+            conn.close()
+
+            if vllm_active and api_active:
+                logger.info(
+                    "Deployed reranker to %s (port %d, vllm port %d, model: %s)",
+                    endpoint.name, endpoint.reranker_port,
+                    server_cfg.vllm_port, server_cfg.model_name,
+                )
+            else:
+                logger.error(
+                    "Reranker deployed but not fully active on %s "
+                    "(vllm=%s, api=%s)",
+                    endpoint.name,
+                    "active" if vllm_active else "inactive",
+                    "active" if api_active else "inactive",
+                )
+
+            return vllm_active and api_active
+
+        except Exception as e:
+            logger.error("Deploy reranker failed for %s: %s", endpoint.name, e)
+            return False
+
+    async def stop_reranker(self, endpoint: ServiceEndpoint) -> bool:
+        """Stop reranker services (FastAPI + vLLM) on a remote endpoint."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            # Stop FastAPI wrapper first, then vLLM
+            await conn.run(f"systemctl --user stop {_RERANKER_UNIT_NAME}")
+            await conn.run(f"systemctl --user stop {_RERANKER_VLLM_UNIT_NAME}")
+            conn.close()
+
+            logger.info("Stopped reranker on %s", endpoint.name)
+            return True
+
+        except Exception as e:
+            logger.error("Stop reranker failed for %s: %s", endpoint.name, e)
+            return False
+
+    async def status_reranker(
+        self, endpoint: ServiceEndpoint
+    ) -> ServiceHealth:
+        """Check if reranker is running on a remote endpoint."""
+        from services.reranker.baseline.client import RerankerClient
+
+        client = RerankerClient(endpoint.reranker)
+        try:
+            return await client.health()
+        except Exception:
+            return ServiceHealth(
+                name=endpoint.name,
+                status=ServiceStatus.STOPPED,
+                endpoint=endpoint.reranker.base_url,
+            )
+
+    async def logs_reranker(
+        self, endpoint: ServiceEndpoint, lines: int = 50
+    ) -> str:
+        """Fetch recent journal logs for reranker on a remote endpoint."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            # Fetch logs for both units
+            api_result = await conn.run(
+                f"journalctl --user -u {_RERANKER_UNIT_NAME} "
+                f"-n {lines} --no-pager"
+            )
+            vllm_result = await conn.run(
+                f"journalctl --user -u {_RERANKER_VLLM_UNIT_NAME} "
+                f"-n {lines} --no-pager"
+            )
+            conn.close()
+            return (
+                f"--- {_RERANKER_UNIT_NAME} ---\n{api_result.stdout}\n"
+                f"--- {_RERANKER_VLLM_UNIT_NAME} ---\n{vllm_result.stdout}"
+            )
+
+        except Exception as e:
+            return f"Failed to fetch logs for {endpoint.name}: {e}"
+
+    async def systemd_status_reranker(
+        self, endpoint: ServiceEndpoint
+    ) -> str:
+        """Fetch systemctl status output for reranker."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            api_result = await conn.run(
+                f"systemctl --user status {_RERANKER_UNIT_NAME} --no-pager"
+            )
+            vllm_result = await conn.run(
+                f"systemctl --user status {_RERANKER_VLLM_UNIT_NAME} --no-pager"
+            )
+            conn.close()
+            return (
+                f"--- {_RERANKER_UNIT_NAME} ---\n{api_result.stdout}\n"
+                f"--- {_RERANKER_VLLM_UNIT_NAME} ---\n{vllm_result.stdout}"
+            )
 
         except Exception as e:
             return f"Failed to get status for {endpoint.name}: {e}"

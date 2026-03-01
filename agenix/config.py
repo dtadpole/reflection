@@ -101,6 +101,21 @@ class TextEmbeddingClientConfig(BaseModel):
     retry_interval: float = 2.0
 
 
+class RerankerServerConfig(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 42983
+    vllm_port: int = 42984
+    model_name: str = "Qwen/Qwen3.5-27B"
+    device: str = "cuda:0"
+
+
+class RerankerClientConfig(BaseModel):
+    base_url: str = "http://localhost:42983"
+    timeout: int = 120
+    retry_count: int = 3
+    retry_interval: float = 2.0
+
+
 class ServiceEndpoint(BaseModel):
     name: str
     host: str
@@ -112,6 +127,8 @@ class ServiceEndpoint(BaseModel):
     text_embedding: TextEmbeddingClientConfig = Field(
         default_factory=TextEmbeddingClientConfig
     )
+    reranker_port: int = 42983
+    reranker: RerankerClientConfig = Field(default_factory=RerankerClientConfig)
 
 
 class ServicesConfig(BaseModel):
@@ -119,6 +136,9 @@ class ServicesConfig(BaseModel):
     kb_eval_server: KbEvalServerConfig = Field(default_factory=KbEvalServerConfig)
     text_embedding_server: TextEmbeddingServerConfig = Field(
         default_factory=TextEmbeddingServerConfig
+    )
+    reranker_server: RerankerServerConfig = Field(
+        default_factory=RerankerServerConfig
     )
 
 

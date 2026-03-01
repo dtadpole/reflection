@@ -24,3 +24,5 @@ tunnels:
         remote_port: 42981    # kbEval
       - local_port: 42982
         remote_port: 42982    # text_embedding
+      - local_port: 42983
+        remote_port: 42983    # reranker

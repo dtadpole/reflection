@@ -33,6 +33,18 @@ services/
 │       ├── server.py              # FastAPI server
 │       └── deploy/
 │           └── requirements.txt
+├── reranker/                      # Cross-encoder reranker service
+│   ├── __init__.py
+│   ├── CLAUDE.md                  # Service contract
+│   └── baseline/                  # baseline variant (Qwen3.5-27B via vLLM)
+│       ├── __init__.py
+│       ├── __main__.py            # python -m services.reranker.baseline
+│       ├── client.py              # HTTP client
+│       ├── server.py              # FastAPI server (vLLM wrapper)
+│       └── deploy/
+│           ├── requirements.txt
+│           ├── reranker.service   # systemd unit for FastAPI
+│           └── reranker-vllm.service  # systemd unit for vLLM
 └── ssh_tunnel/                    # SSH tunnel service (infrastructure)
     ├── __init__.py
     ├── tunnel.py                  # TunnelStatus, check_port, get_manager
@@ -69,10 +81,13 @@ reflection services deploy <name>           # Deploy kbEval via systemd
 reflection services stop <name>             # Stop kbEval
 reflection services deploy-embedding <name> # Deploy text-embedding via systemd
 reflection services stop-embedding <name>   # Stop text-embedding
+reflection services deploy-reranker <name>  # Deploy reranker (vLLM + FastAPI) via systemd
+reflection services stop-reranker <name>    # Stop reranker
 reflection services status                  # Health-check all endpoints
 reflection services health <name>           # Detailed health (all services) + systemd status
 reflection services logs <name>             # View kbEval journal logs
 reflection services logs-embedding <name>   # View text-embedding journal logs
+reflection services logs-reranker <name>    # View reranker journal logs (both units)
 ```
 
 ## SSH Tunnels

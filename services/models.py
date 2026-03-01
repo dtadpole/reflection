@@ -46,6 +46,13 @@ class EmbeddingResult(BaseModel):
     dimension: int = 0
 
 
+class RerankResult(BaseModel):
+    """Result of a reranking request."""
+
+    scores: list[float]  # One score per document, 0-1
+    model: str = ""
+
+
 class ServiceHealth(BaseModel):
     """Health status of a remote service endpoint."""
 

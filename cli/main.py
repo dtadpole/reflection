@@ -419,6 +419,81 @@ def services_logs_embedding(
     typer.echo(output)
 
 
+@services_app.command("deploy-reranker")
+def services_deploy_reranker(
+    name: str = typer.Argument(..., help="Endpoint name to deploy to."),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Deploy reranker service (vLLM + FastAPI) to a named endpoint."""
+    import asyncio
+
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+
+    endpoint = _find_endpoint(cfg, name)
+
+    from services.deploy import ServiceDeployer
+
+    deployer = ServiceDeployer(cfg.services)
+    ok = asyncio.run(deployer.deploy_reranker(endpoint))
+    if ok:
+        typer.echo(f"Deployed reranker to {name}.")
+    else:
+        typer.echo(f"Deploy reranker to {name} failed.", err=True)
+        raise typer.Exit(1)
+
+
+@services_app.command("stop-reranker")
+def services_stop_reranker(
+    name: str = typer.Argument(..., help="Endpoint name to stop."),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Stop reranker service on a named endpoint."""
+    import asyncio
+
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+
+    endpoint = _find_endpoint(cfg, name)
+
+    from services.deploy import ServiceDeployer
+
+    deployer = ServiceDeployer(cfg.services)
+    ok = asyncio.run(deployer.stop_reranker(endpoint))
+    if ok:
+        typer.echo(f"Stopped reranker on {name}.")
+    else:
+        typer.echo(f"Stop reranker on {name} failed.", err=True)
+        raise typer.Exit(1)
+
+
+@services_app.command("logs-reranker")
+def services_logs_reranker(
+    name: str = typer.Argument(..., help="Endpoint name."),
+    lines: int = typer.Option(50, "-n", "--lines", help="Number of log lines."),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """View recent reranker logs from a remote endpoint."""
+    import asyncio
+
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+
+    endpoint = _find_endpoint(cfg, name)
+
+    from services.deploy import ServiceDeployer
+
+    deployer = ServiceDeployer(cfg.services)
+    output = asyncio.run(deployer.logs_reranker(endpoint, lines=lines))
+    typer.echo(output)
+
+
 @services_app.command("health")
 def services_health(
     name: str = typer.Argument(..., help="Endpoint name to check."),
@@ -458,6 +533,13 @@ def services_health(
     typer.echo(f"Endpoint: {te.endpoint}")
     typer.echo(f"Devices:  {', '.join(te.devices) or 'none'}")
 
+    # reranker health
+    rr = asyncio.run(checker.check_reranker(endpoint))
+    typer.echo("\n--- reranker ---")
+    typer.echo(f"Status:   {rr.status.value}")
+    typer.echo(f"Endpoint: {rr.endpoint}")
+    typer.echo(f"Devices:  {', '.join(rr.devices) or 'none'}")
+
     # systemd status
     if ssh_ok:
         deployer = ServiceDeployer(cfg.services)
@@ -465,6 +547,8 @@ def services_health(
         typer.echo(f"\n--- systemd: kb-eval ---\n{sd_status}")
         sd_status_te = asyncio.run(deployer.systemd_status_text_embedding(endpoint))
         typer.echo(f"\n--- systemd: text-embedding ---\n{sd_status_te}")
+        sd_status_rr = asyncio.run(deployer.systemd_status_reranker(endpoint))
+        typer.echo(f"\n--- systemd: reranker ---\n{sd_status_rr}")
 
 
 @services_app.command("logs")

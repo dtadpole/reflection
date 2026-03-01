@@ -35,3 +35,9 @@ endpoints:
       timeout: 60
       retry_count: 3
       retry_interval: 2.0
+    reranker_port: 42983
+    reranker:
+      base_url: "http://localhost:42983"
+      timeout: 120
+      retry_count: 3
+      retry_interval: 2.0

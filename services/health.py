@@ -8,6 +8,7 @@ import logging
 from agenix.config import ServiceEndpoint, ServicesConfig
 from services.kb_eval.baseline.client import KbEvalClient
 from services.models import ServiceHealth, ServiceStatus
+from services.reranker.baseline.client import RerankerClient
 from services.text_embedding.baseline.client import TextEmbeddingClient
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,23 @@ class HealthChecker:
                 name=endpoint.name,
                 status=ServiceStatus.ERROR,
                 endpoint=endpoint.text_embedding.base_url,
+            )
+
+    async def check_reranker(
+        self, endpoint: ServiceEndpoint
+    ) -> ServiceHealth:
+        """Check health of a single endpoint's reranker service."""
+        client = RerankerClient(endpoint.reranker)
+        try:
+            return await client.health()
+        except Exception as e:
+            logger.debug(
+                "Reranker health check failed for %s: %s", endpoint.name, e
+            )
+            return ServiceHealth(
+                name=endpoint.name,
+                status=ServiceStatus.ERROR,
+                endpoint=endpoint.reranker.base_url,
             )
 
     async def check_ssh(self, endpoint: ServiceEndpoint) -> bool:
