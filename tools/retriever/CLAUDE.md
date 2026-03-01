@@ -46,6 +46,13 @@ The retriever is a thin MCP wrapper around `KnowledgeStore.search()`. It convert
 # Unit tests — shared contract + variant-specific (mocked store + reranker)
 uv run pytest tests/unit/test_retriever.py -v
 
-# Integration tests (local embedder + real LanceDB, baseline only)
+# Integration tests (remote embedder + reranker, both variants)
+# Requires: SSH tunnels running, text-embedding + reranker services on _two
+reflection services tunnel start
 uv run pytest tests/integration/test_retriever_tool.py -v -s
 ```
+
+Integration tests use `RemoteEmbedder` (Qwen3-Embedding-8B, 4096-dim) and cover:
+- **TestRetrieverBaseline** — basic invocation, semantic quality, lineage (archive/supersede)
+- **TestRetrieverRerank** — semantic quality, output format, top_k, type filter (skipped if reranker down)
+- **TestRerankVsBaseline** — cross-variant comparison (both return results, valid format, scores differ)
