@@ -90,15 +90,21 @@ def parse_problem(output: str) -> Problem:
 def parse_trajectory(output: str, problem_id: str) -> Trajectory:
     """Parse solver output into a Trajectory."""
     data = extract_json(output)
-    test_results = [
-        TestResult(
-            test_case=TestCase(**tr["test_case"]),
+    test_results = []
+    for tr in data.get("test_results", []):
+        if not isinstance(tr, dict) or "passed" not in tr:
+            continue
+        tc_data = tr.get("test_case")
+        test_case = TestCase(**tc_data) if isinstance(tc_data, dict) else TestCase(
+            input=str(tr.get("input", "")),
+            expected_output=str(tr.get("expected_output", "")),
+        )
+        test_results.append(TestResult(
+            test_case=test_case,
             passed=tr["passed"],
             actual_output=tr.get("actual_output", ""),
             error=tr.get("error", ""),
-        )
-        for tr in data.get("test_results", [])
-    ]
+        ))
     return Trajectory(
         problem_id=problem_id,
         code_solution=data.get("code_solution", ""),

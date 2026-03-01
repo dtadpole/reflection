@@ -1182,4 +1182,8 @@ def _find_endpoint(cfg: ReflectionConfig, name: str):
 
 def _setup_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(level=level, format="%(name)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )

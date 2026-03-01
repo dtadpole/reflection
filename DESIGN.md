@@ -51,6 +51,21 @@ queues and a shared knowledge base.
 270 PyTorch GPU kernel problems from HuggingFace (`ScalingIntelligence/KernelBench`).
 Each problem contains reference PyTorch code; solver writes Triton kernel replacements.
 
+## Design Principles
+
+### Tool-Mediated Verification
+
+The SOLVER must **always** use the `verifier` tool for correctness and performance
+checks. It must never attempt its own verification — no manual testing, no SSH to
+GPU hosts, no writing benchmark scripts, no running code locally. The verifier is
+the single source of truth for whether a solution compiles, is correct, and how it
+performs relative to the reference.
+
+**Rationale**: Self-verification is unreliable, wastes turns/cost exploring
+infrastructure code, and produces results that aren't recorded in the system's
+structured data. The verifier provides a standardized, reproducible evaluation
+that feeds back into the learning loop.
+
 ## Data Layout
 
 All data is stored as JSON files in a structured filesystem. DuckDB is used as

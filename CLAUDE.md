@@ -175,6 +175,10 @@ Path: `<reflection_data_root>/<reflection_env>/`
 - **DuckDB** as query engine over JSON files (no persistent DB)
 - **LanceDB** for vector embeddings (semantic search over cards)
 
+## Design Rules
+
+- **Tool-mediated verification**: The SOLVER must always use the `verifier` tool for correctness and performance checks. It must never attempt its own verification — no manual testing, no SSH to GPU hosts, no writing benchmark scripts, no running code locally. The verifier is the single source of truth.
+
 ## Key Patterns
 
 - Custom tools: `@tool` decorator + `create_sdk_mcp_server` from `claude-agent-sdk`

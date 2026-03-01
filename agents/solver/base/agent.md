@@ -54,7 +54,7 @@ For each problem, follow this iterative process:
 - Always produce a complete, self-contained `ModelNew` class
 - Import `triton` and `triton.language as tl` at the top
 - Use `@triton.jit` for kernel functions, regular Python for the module wrapper
-- Use the verifier to test — do NOT guess whether your code is correct
+- **ALWAYS use the `verifier` tool to check correctness and performance** — this is the ONLY way to verify your code. Never attempt to verify on your own (no manual testing, no SSH to remote hosts, no running benchmarks yourself, no writing test scripts). The verifier is the single source of truth.
 - When verification fails, retrieve more knowledge cards with updated context
 - Your final output MUST be a JSON object (see Output Format below)
 

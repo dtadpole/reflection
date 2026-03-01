@@ -13,6 +13,7 @@ from patches.claude_agent_sdk_mcp_fix import apply as _apply_sdk_fix
 _apply_sdk_fix()
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+from claude_agent_sdk.types import AssistantMessage, SystemMessage, UserMessage
 
 from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.storage.models import LoadedAgent
@@ -89,9 +90,24 @@ class ClaudeRunner:
         )
 
         result_message: ResultMessage | None = None
+        turn = 0
         async for message in query(prompt=input_payload, options=options):
-            if isinstance(message, ResultMessage):
+            if isinstance(message, AssistantMessage):
+                turn += 1
+                self._log_assistant_message(agent.name, turn, message)
+            elif isinstance(message, UserMessage):
+                self._log_user_message(agent.name, turn, message)
+            elif isinstance(message, SystemMessage):
+                logger.info(
+                    "[%s] system: subtype=%s data=%s",
+                    agent.name, message.subtype, message.data,
+                )
+            elif isinstance(message, ResultMessage):
                 result_message = message
+            else:
+                logger.warning(
+                    "[%s] unknown message type: %s", agent.name, type(message).__name__,
+                )
 
         if result_message is None:
             raise RuntimeError(f"Agent {agent.name} returned no result")
@@ -129,6 +145,67 @@ class ClaudeRunner:
         )
 
         return result
+
+    @staticmethod
+    def _log_assistant_message(agent_name: str, turn: int, msg: AssistantMessage) -> None:
+        """Log an assistant message with its content blocks."""
+        from claude_agent_sdk.types import TextBlock, ThinkingBlock, ToolUseBlock
+
+        if msg.error:
+            logger.warning("[%s] turn %d: error=%s", agent_name, turn, msg.error)
+
+        for block in msg.content:
+            if isinstance(block, ToolUseBlock):
+                logger.info(
+                    "[%s] turn %d: tool_use %s (id=%s)",
+                    agent_name, turn, block.name, block.id,
+                )
+            elif isinstance(block, TextBlock):
+                preview = block.text[:200].replace("\n", " ")
+                logger.info(
+                    "[%s] turn %d: text (%d chars): %s",
+                    agent_name, turn, len(block.text), preview,
+                )
+            elif isinstance(block, ThinkingBlock):
+                logger.info(
+                    "[%s] turn %d: thinking (%d chars)",
+                    agent_name, turn, len(block.thinking),
+                )
+            else:
+                logger.info(
+                    "[%s] turn %d: block %s",
+                    agent_name, turn, type(block).__name__,
+                )
+
+    @staticmethod
+    def _log_user_message(agent_name: str, turn: int, msg: UserMessage) -> None:
+        """Log a user message (typically tool results)."""
+        from claude_agent_sdk.types import ToolResultBlock
+
+        if isinstance(msg.content, list):
+            for block in msg.content:
+                if isinstance(block, ToolResultBlock):
+                    content_preview = ""
+                    if isinstance(block.content, str):
+                        content_preview = block.content[:200].replace("\n", " ")
+                    elif isinstance(block.content, list):
+                        content_preview = f"[{len(block.content)} parts]"
+                    status = "error" if block.is_error else "ok"
+                    logger.info(
+                        "[%s] turn %d: tool_result (%s) for %s: %s",
+                        agent_name, turn, status, block.tool_use_id, content_preview,
+                    )
+                else:
+                    logger.info(
+                        "[%s] turn %d: user block %s",
+                        agent_name, turn, type(block).__name__,
+                    )
+        elif isinstance(msg.content, str):
+            preview = msg.content[:200].replace("\n", " ")
+            logger.info(
+                "[%s] turn %d: user text (%d chars): %s",
+                agent_name, turn, len(msg.content), preview,
+            )
 
     def _build_options(self, agent: LoadedAgent) -> ClaudeAgentOptions:
         """Map a LoadedAgent to ClaudeAgentOptions."""
