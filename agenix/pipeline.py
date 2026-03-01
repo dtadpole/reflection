@@ -280,7 +280,10 @@ class Pipeline:
 def _extract_json(text: str) -> dict[str, Any]:
     """Extract a JSON object from agent output text.
 
-    Handles both raw JSON and JSON wrapped in markdown code blocks.
+    Handles:
+    1. Raw JSON
+    2. JSON wrapped in markdown code blocks (```json ... ```)
+    3. Prose-prefixed JSON (text before the first '{' or '[')
     """
     text = text.strip()
 
@@ -300,6 +303,14 @@ def _extract_json(text: str) -> dict[str, Any]:
                 return json.loads(block)
             except json.JSONDecodeError:
                 continue
+
+    # Try scanning for first '{' (prose-prefixed JSON)
+    brace = text.find("{")
+    if brace >= 0:
+        try:
+            return json.loads(text[brace:])
+        except json.JSONDecodeError:
+            pass
 
     raise ValueError(f"Could not parse JSON from agent output: {text[:200]}")
 

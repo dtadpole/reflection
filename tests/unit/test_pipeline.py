@@ -125,6 +125,16 @@ class TestExtractJson:
         data = _extract_json(text)
         assert data == {"key": "value"}
 
+    def test_prose_prefixed_json(self):
+        text = 'Here is my answer:\n{"key": "value"}'
+        data = _extract_json(text)
+        assert data == {"key": "value"}
+
+    def test_prose_prefixed_nested_json(self):
+        text = 'Sure, here is the output:\n\n{"title": "Foo", "items": [1, 2, 3]}'
+        data = _extract_json(text)
+        assert data == {"title": "Foo", "items": [1, 2, 3]}
+
     def test_invalid_json_raises(self):
         with pytest.raises(ValueError, match="Could not parse JSON"):
             _extract_json("not json at all")

@@ -40,10 +40,22 @@ def _make_run_tag() -> str:
     return "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
+def _find_endpoint_by_name(config: ReflectionConfig, name: str):
+    """Find a service endpoint by name, or return None."""
+    for ep in config.services.endpoints:
+        if ep.name == name:
+            return ep
+    return None
+
+
 def _bootstrap(config: ReflectionConfig):
     """Create all runtime objects for pipeline execution.
 
     Returns (pipeline, runner, fs_backend).
+
+    Endpoint wiring:
+    - _one: kb_eval (verifier)
+    - _two: text_embedding (RemoteEmbedder) + reranker (retriever rerank variant)
     """
     from agenix.pipeline import Pipeline
     from agenix.runner import ClaudeRunner
@@ -54,16 +66,30 @@ def _bootstrap(config: ReflectionConfig):
     fs = FSBackend(config.storage)
     fs.initialize()
 
-    store = KnowledgeStore(config=config, fs_backend=fs)
+    ep_two = _find_endpoint_by_name(config, "_two")
+    ep_one = _find_endpoint_by_name(config, "_one")
+
+    # Build KnowledgeStore — use RemoteEmbedder when _two is available
+    if ep_two:
+        from tools.knowledge.baseline.embedder import RemoteEmbedder
+        from tools.knowledge.baseline.index import LanceIndex
+
+        embedder = RemoteEmbedder(config=ep_two.text_embedding, dimension=4096)
+        lance = LanceIndex(db_path=config.storage.lance_path, vector_dim=4096)
+        store = KnowledgeStore(
+            config=config, fs_backend=fs, lance_index=lance, embedder=embedder,
+        )
+    else:
+        store = KnowledgeStore(config=config, fs_backend=fs)
     store.initialize()
 
     registry = ToolRegistry()
 
-    # Load retriever tool — use rerank variant when reranker endpoint is available
-    if config.services.endpoints:
+    # Load retriever tool — use rerank variant when reranker is available on _two
+    if ep_two:
         from services.reranker.baseline.client import RerankerClient
 
-        rr_client = RerankerClient(config.services.endpoints[0].reranker)
+        rr_client = RerankerClient(ep_two.reranker)
         retriever_def = load_tool("retriever", variant="rerank")
         registry.register(
             retriever_def.create_fn(
@@ -74,11 +100,11 @@ def _bootstrap(config: ReflectionConfig):
         retriever_def = load_tool("retriever", variant="baseline")
         registry.register(retriever_def.create_fn(knowledge_store=store))
 
-    # Load verifier tool (kb_eval variant) if endpoints are configured
-    if config.services.endpoints:
+    # Load verifier tool (kb_eval variant) when _one is available
+    if ep_one:
         from services.kb_eval.baseline.client import KbEvalClient
 
-        kb_client = KbEvalClient(config.services.endpoints[0].kb_eval)
+        kb_client = KbEvalClient(ep_one.kb_eval)
         verifier_def = load_tool("verifier", variant="kb_eval")
         registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
 
@@ -104,22 +130,31 @@ def run(
 ) -> None:
     """Run N iterations of the full reflection pipeline."""
     _setup_logging(verbose)
+    log = logging.getLogger("reflection.run")
     cfg = _load_config(config, env)
     pipeline, _, _ = _bootstrap(cfg)
 
+    succeeded = 0
+    failed = 0
     for i in range(1, iterations + 1):
         run_tag = _make_run_tag()
         typer.echo(f"--- Iteration {i}/{iterations} [{run_tag}] ---")
-        result = pipeline.run_iteration(run_tag, iteration=i)
-        status = "correct" if result.is_correct else "incorrect"
-        typer.echo(
-            f"  Problem: {result.problem_id} | "
-            f"Trajectory: {result.trajectory_id} | "
-            f"Result: {status} | "
-            f"Cards: {len(result.cards_created)}"
-        )
+        try:
+            result = pipeline.run_iteration(run_tag, iteration=i)
+            status = "correct" if result.is_correct else "incorrect"
+            typer.echo(
+                f"  Problem: {result.problem_id} | "
+                f"Trajectory: {result.trajectory_id} | "
+                f"Result: {status} | "
+                f"Cards: {len(result.cards_created)}"
+            )
+            succeeded += 1
+        except Exception as exc:
+            log.error("Iteration %d failed: %s", i, exc, exc_info=True)
+            typer.echo(f"  FAILED: {exc}", err=True)
+            failed += 1
 
-    typer.echo("Done.")
+    typer.echo(f"Done. {succeeded} succeeded, {failed} failed.")
 
 
 @app.command()

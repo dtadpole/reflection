@@ -98,20 +98,21 @@ class ClaudeRunner:
         builtin_tools = agent.config.tools or []
         custom_tools = agent.config.custom_tools or []
 
-        # Build MCP servers dict
+        # Build MCP servers dict — only include tools actually registered
         mcp_servers: dict = {}
+        available_custom: list[str] = []
         if custom_tools and self._registry:
             registered = self._registry.list_tools()
-            available = [t for t in custom_tools if t in registered]
-            if available:
+            available_custom = [t for t in custom_tools if t in registered]
+            if available_custom:
                 mcp_servers["reflection"] = self._registry.create_mcp_server(
                     server_name="reflection",
-                    tool_names=available,
+                    tool_names=available_custom,
                 )
 
-        # Build allowed_tools list
+        # Build allowed_tools list — only add custom tools that have a backing server
         allowed_tools: list[str] = list(builtin_tools)
-        for t in custom_tools:
+        for t in available_custom:
             allowed_tools.append(f"mcp__reflection__{t}")
 
         options = ClaudeAgentOptions(

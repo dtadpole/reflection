@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from agenix.runner import ClaudeRunner, resolve_model
 from agenix.storage.models import AgentConfig, LoadedAgent
 from agenix.tools.registry import ToolRegistry
+
+
+def _mock_tool(name: str):
+    """Create a mock SdkMcpTool with the given name."""
+    t = MagicMock()
+    t.name = name
+    return t
 
 # --- resolve_model ---
 
@@ -69,7 +78,7 @@ class TestBuildOptions:
 
     def test_custom_tools_only(self):
         registry = ToolRegistry()
-        # We don't actually register tools — just verify option building
+        registry.register(_mock_tool("knowledge_retriever"))
         runner = ClaudeRunner(tool_registry=registry)
         agent = _make_agent(
             config=AgentConfig(custom_tools=["knowledge_retriever"]),
@@ -79,6 +88,7 @@ class TestBuildOptions:
 
     def test_both_builtin_and_custom(self):
         registry = ToolRegistry()
+        registry.register(_mock_tool("verifier"))
         runner = ClaudeRunner(tool_registry=registry)
         agent = _make_agent(
             config=AgentConfig(
@@ -89,6 +99,16 @@ class TestBuildOptions:
         opts = runner._build_options(agent)
         assert "Read" in opts.allowed_tools
         assert "mcp__reflection__verifier" in opts.allowed_tools
+
+    def test_unregistered_custom_tool_excluded(self):
+        """Custom tools not registered in the registry should not appear in allowed_tools."""
+        registry = ToolRegistry()
+        runner = ClaudeRunner(tool_registry=registry)
+        agent = _make_agent(
+            config=AgentConfig(custom_tools=["verifier"]),
+        )
+        opts = runner._build_options(agent)
+        assert "mcp__reflection__verifier" not in (opts.allowed_tools or [])
 
     def test_empty_system_prompt(self):
         runner = ClaudeRunner()
