@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
+from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.loader import load_agent
 from agenix.parsers import parse_trajectory
 from agenix.queue.fs_queue import FSQueue
@@ -33,6 +34,7 @@ class SolverHandler:
         run_tag: str,
         *,
         knowledge_limit: int = 10,
+        execution_log: ExecutionLogger | None = None,
     ) -> None:
         self._runner = runner
         self._fs = fs_backend
@@ -40,6 +42,7 @@ class SolverHandler:
         self._traj_queue = trajectories_queue
         self._run_tag = run_tag
         self._knowledge_limit = knowledge_limit
+        self._log = execution_log or NullExecutionLogger()
 
     def handle(self, message: QueueMessage) -> None:
         """Process a problem message from the problems queue."""
@@ -57,6 +60,11 @@ class SolverHandler:
         )
         knowledge_hits = self._store.search(
             query=retrieval_query,
+            limit=self._knowledge_limit,
+        )
+        self._log.knowledge_retrieval(
+            query=retrieval_query,
+            num_hits=len(knowledge_hits),
             limit=self._knowledge_limit,
         )
         knowledge = [
@@ -78,11 +86,18 @@ class SolverHandler:
         # Run solver agent
         self._fs.update_problem_status(problem_id, ProblemStatus.SOLVING)
         agent = load_agent("solver")
-        output = self._runner.run(agent, input_payload)
+        result = self._runner.run(agent, input_payload)
 
         # Parse trajectory
-        trajectory = parse_trajectory(output, problem_id)
+        trajectory = parse_trajectory(result.output, problem_id)
+        self._log.output_parsed(
+            parser="parse_trajectory",
+            success=True,
+            entities=[f"trajectory:{trajectory.trajectory_id}"],
+        )
+
         self._fs.save_trajectory(trajectory, self._run_tag)
+        self._log.data_saved("trajectory", trajectory.trajectory_id)
 
         new_status = (
             ProblemStatus.SOLVED if trajectory.is_correct else ProblemStatus.FAILED
@@ -91,7 +106,7 @@ class SolverHandler:
 
         # Enqueue for critic
         self._traj_queue.initialize()
-        self._traj_queue.enqueue(
+        msg = self._traj_queue.enqueue(
             sender="solver",
             payload={
                 "trajectory_id": trajectory.trajectory_id,
@@ -99,6 +114,7 @@ class SolverHandler:
                 "run_tag": self._run_tag,
             },
         )
+        self._log.message_enqueued("trajectories", msg.message_id)
 
         logger.info(
             "Solver finished: correct=%s, trajectory=%s",

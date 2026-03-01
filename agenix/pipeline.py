@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 from agenix.config import ReflectionConfig
 from agenix.loader import load_agent
@@ -39,9 +39,9 @@ logger = logging.getLogger(__name__)
 
 
 class AgentRunner(Protocol):
-    """Protocol for invoking an agent and getting its text output."""
+    """Protocol for invoking an agent and returning structured results."""
 
-    def run(self, agent: LoadedAgent, input_payload: str) -> str: ...
+    def run(self, agent: LoadedAgent, input_payload: str) -> Any: ...
 
 
 class Pipeline:
@@ -146,8 +146,8 @@ class Pipeline:
             "knowledge_hints": [],
         })
 
-        output = self._runner.run(agent, input_payload)
-        problem = parse_problem(output)
+        result = self._runner.run(agent, input_payload)
+        problem = parse_problem(result.output)
         self._fs.save_problem(problem)
         return problem
 
@@ -171,8 +171,8 @@ class Pipeline:
         })
 
         self._fs.update_problem_status(problem.problem_id, ProblemStatus.SOLVING)
-        output = self._runner.run(agent, input_payload)
-        trajectory = parse_trajectory(output, problem.problem_id)
+        result = self._runner.run(agent, input_payload)
+        trajectory = parse_trajectory(result.output, problem.problem_id)
         self._fs.save_trajectory(trajectory, run_tag)
 
         new_status = ProblemStatus.SOLVED if trajectory.is_correct else ProblemStatus.FAILED
@@ -192,8 +192,8 @@ class Pipeline:
             "trajectory": json.loads(trajectory.model_dump_json()),
         })
 
-        output = self._runner.run(agent, input_payload)
-        cards = parse_reflection_cards(output, trajectory.trajectory_id)
+        result = self._runner.run(agent, input_payload)
+        cards = parse_reflection_cards(result.output, trajectory.trajectory_id)
 
         for card in cards:
             source_refs = [
@@ -221,8 +221,8 @@ class Pipeline:
             "problem": json.loads(problem.model_dump_json()),
         })
 
-        output = self._runner.run(agent, input_payload)
-        cards = parse_knowledge_actions(output)
+        result = self._runner.run(agent, input_payload)
+        cards = parse_knowledge_actions(result.output)
 
         for card in cards:
             source_refs = [
@@ -258,8 +258,8 @@ class Pipeline:
             "batch_info": {"run_tags": [run_tag], "total_count": len(recent)},
         })
 
-        output = self._runner.run(agent, input_payload)
-        cards = parse_insight_cards(output)
+        result = self._runner.run(agent, input_payload)
+        cards = parse_insight_cards(result.output)
 
         for card in cards:
             source_refs = [

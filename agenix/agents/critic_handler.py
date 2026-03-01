@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
+from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.loader import load_agent
 from agenix.parsers import parse_reflection_cards
 from agenix.queue.models import QueueMessage
@@ -25,10 +26,12 @@ class CriticHandler:
         runner: ClaudeRunner,
         fs_backend: FSBackend,
         knowledge_store: KnowledgeStore,
+        execution_log: ExecutionLogger | None = None,
     ) -> None:
         self._runner = runner
         self._fs = fs_backend
         self._store = knowledge_store
+        self._log = execution_log or NullExecutionLogger()
 
     def handle(self, message: QueueMessage) -> None:
         """Process a trajectory message from the trajectories queue."""
@@ -56,8 +59,13 @@ class CriticHandler:
         })
 
         agent = load_agent("critic")
-        output = self._runner.run(agent, input_payload)
-        cards = parse_reflection_cards(output, trajectory_id)
+        result = self._runner.run(agent, input_payload)
+        cards = parse_reflection_cards(result.output, trajectory_id)
+        self._log.output_parsed(
+            parser="parse_reflection_cards",
+            success=True,
+            entities=[f"card:{c.card_id}" for c in cards],
+        )
 
         for card in cards:
             source_refs = [
@@ -65,5 +73,6 @@ class CriticHandler:
             ]
             record_creation(card, source_refs, agent="critic", run_tag=run_tag)
             self._store.add_card(card)
+            self._log.data_saved("reflection_card", card.card_id)
 
         logger.info("Critic produced %d reflection cards", len(cards))

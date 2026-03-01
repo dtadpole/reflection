@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -13,10 +14,23 @@ _apply_sdk_fix()
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
+from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.storage.models import LoadedAgent
 from agenix.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AgentResult:
+    """Result from an agent invocation with execution metadata."""
+
+    output: str
+    duration_ms: int = 0
+    num_turns: int = 0
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 # Short model name -> full model ID
 _MODEL_MAP: dict[str, str] = {
@@ -41,18 +55,22 @@ class ClaudeRunner:
         self,
         tool_registry: Optional[ToolRegistry] = None,
         cwd: Optional[Path] = None,
+        execution_log: Optional[ExecutionLogger] = None,
     ) -> None:
         self._registry = tool_registry
         self._cwd = cwd
+        self._log = execution_log or NullExecutionLogger()
 
-    def run(self, agent: LoadedAgent, input_payload: str) -> str:
+    def run(self, agent: LoadedAgent, input_payload: str) -> AgentResult:
         """Run an agent synchronously. Implements the AgentRunner protocol.
 
         Each agent call gets its own asyncio.run() for clean isolation.
         """
         return asyncio.run(self._run_async(agent, input_payload))
 
-    async def _run_async(self, agent: LoadedAgent, input_payload: str) -> str:
+    async def _run_async(
+        self, agent: LoadedAgent, input_payload: str,
+    ) -> AgentResult:
         """Run an agent asynchronously via claude_agent_sdk.query()."""
         options = self._build_options(agent)
 
@@ -61,6 +79,13 @@ class ClaudeRunner:
             agent.name,
             options.model,
             options.max_turns,
+        )
+
+        self._log.agent_started(
+            agent_name=agent.name,
+            model=options.model,
+            max_turns=options.max_turns,
+            input_size_chars=len(input_payload),
         )
 
         result_message: ResultMessage | None = None
@@ -76,15 +101,34 @@ class ClaudeRunner:
                 f"Agent {agent.name} returned an error: {result_message.result}"
             )
 
+        usage = result_message.usage or {}
+        result = AgentResult(
+            output=result_message.result or "",
+            duration_ms=result_message.duration_ms,
+            num_turns=result_message.num_turns,
+            cost_usd=result_message.total_cost_usd or 0.0,
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+        )
+
         logger.info(
             "Agent %s finished in %dms (%d turns, cost=$%.4f)",
             agent.name,
-            result_message.duration_ms,
-            result_message.num_turns,
-            result_message.total_cost_usd or 0,
+            result.duration_ms,
+            result.num_turns,
+            result.cost_usd,
         )
 
-        return result_message.result or ""
+        self._log.agent_completed(
+            agent_name=agent.name,
+            duration_ms=result.duration_ms,
+            num_turns=result.num_turns,
+            cost_usd=result.cost_usd,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+        )
+
+        return result
 
     def _build_options(self, agent: LoadedAgent) -> ClaudeAgentOptions:
         """Map a LoadedAgent to ClaudeAgentOptions."""
@@ -113,6 +157,9 @@ class ClaudeRunner:
             system_prompt=agent.system_prompt or None,
             max_turns=agent.config.max_turns,
             permission_mode="bypassPermissions",
+            # Clear CLAUDECODE so the spawned CLI doesn't refuse to run
+            # as a "nested session" when invoked from within Claude Code.
+            env={"CLAUDECODE": ""},
         )
 
         if allowed_tools:

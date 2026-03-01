@@ -18,12 +18,14 @@ agent_app = typer.Typer(help="Run individual agents.")
 queues_app = typer.Typer(help="Queue management.")
 cards_app = typer.Typer(help="Manage knowledge cards.")
 trajectories_app = typer.Typer(help="Manage solver trajectories.")
+logs_app = typer.Typer(help="View execution logs.")
 services_app = typer.Typer(help="Manage remote services.")
 tunnel_app = typer.Typer(help="Manage SSH tunnels for port forwarding.")
 app.add_typer(agent_app, name="agent")
 app.add_typer(queues_app, name="queues")
 app.add_typer(cards_app, name="cards")
 app.add_typer(trajectories_app, name="trajectories")
+app.add_typer(logs_app, name="logs")
 app.add_typer(services_app, name="services")
 services_app.add_typer(tunnel_app, name="tunnel")
 
@@ -52,15 +54,19 @@ def _find_endpoint_by_name(config: ReflectionConfig, name: str):
     return None
 
 
-def _bootstrap(config: ReflectionConfig):
+def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
     """Create all runtime objects for pipeline execution.
 
-    Returns (pipeline, runner, fs_backend).
+    Returns (pipeline, runner, fs_backend, execution_log).
 
     Endpoint wiring:
     - _one: kb_eval (verifier)
     - _two: text_embedding (RemoteEmbedder) + reranker (retriever rerank variant)
     """
+    from agenix.execution_log import (
+        NullExecutionLogger,
+        create_execution_logger,
+    )
     from agenix.pipeline import Pipeline
     from agenix.runner import ClaudeRunner
     from agenix.tools.loader import load_tool
@@ -69,6 +75,12 @@ def _bootstrap(config: ReflectionConfig):
 
     fs = FSBackend(config.storage)
     fs.initialize()
+
+    exec_log = (
+        create_execution_logger(config.storage, run_tag)
+        if run_tag
+        else NullExecutionLogger()
+    )
 
     ep_two = _find_endpoint_by_name(config, "_two")
     ep_one = _find_endpoint_by_name(config, "_one")
@@ -112,14 +124,14 @@ def _bootstrap(config: ReflectionConfig):
         verifier_def = load_tool("verifier", variant="kb_eval")
         registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
 
-    runner = ClaudeRunner(tool_registry=registry)
+    runner = ClaudeRunner(tool_registry=registry, execution_log=exec_log)
     pipeline = Pipeline(
         config=config,
         runner=runner,
         knowledge_store=store,
         fs_backend=fs,
     )
-    return pipeline, runner, fs
+    return pipeline, runner, fs, exec_log
 
 
 # --- Top-level commands ---
@@ -136,7 +148,7 @@ def run(
     _setup_logging(verbose)
     log = logging.getLogger("reflection.run")
     cfg = _load_config(config, env)
-    pipeline, _, _ = _bootstrap(cfg)
+    pipeline, _, _, _ = _bootstrap(cfg)
 
     succeeded = 0
     failed = 0
@@ -171,7 +183,7 @@ def solve(
     """Solve a single problem using the solver agent."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
-    pipeline, _, fs = _bootstrap(cfg)
+    pipeline, _, fs, _ = _bootstrap(cfg)
 
     from agenix.storage.models import Problem
 
@@ -252,7 +264,8 @@ def agent_solver(
     """Run the solver agent (polls problems queue)."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
-    pipeline, runner, fs = _bootstrap(cfg)
+    run_tag = _make_run_tag()
+    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import QueueAgentLoop
     from agenix.agents.solver_handler import SolverHandler
@@ -260,7 +273,6 @@ def agent_solver(
 
     problems_q = FSQueue("problems", cfg.storage)
     trajectories_q = FSQueue("trajectories", cfg.storage)
-    run_tag = _make_run_tag()
 
     handler = SolverHandler(
         runner=runner,
@@ -268,8 +280,9 @@ def agent_solver(
         knowledge_store=pipeline.store,
         trajectories_queue=trajectories_q,
         run_tag=run_tag,
+        execution_log=exec_log,
     )
-    loop = QueueAgentLoop(problems_q, handler)
+    loop = QueueAgentLoop(problems_q, handler, execution_log=exec_log)
     typer.echo(f"Solver agent started (run_tag={run_tag}).")
     loop.run()
 
@@ -283,7 +296,8 @@ def agent_critic(
     """Run the critic agent (polls trajectories queue)."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
-    pipeline, runner, fs = _bootstrap(cfg)
+    run_tag = _make_run_tag()
+    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import QueueAgentLoop
     from agenix.agents.critic_handler import CriticHandler
@@ -295,9 +309,10 @@ def agent_critic(
         runner=runner,
         fs_backend=fs,
         knowledge_store=pipeline.store,
+        execution_log=exec_log,
     )
-    loop = QueueAgentLoop(trajectories_q, handler)
-    typer.echo("Critic agent started.")
+    loop = QueueAgentLoop(trajectories_q, handler, execution_log=exec_log)
+    typer.echo(f"Critic agent started (run_tag={run_tag}).")
     loop.run()
 
 
@@ -311,20 +326,21 @@ def agent_organizer(
     """Run the organizer agent (periodic knowledge synthesis)."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
-    pipeline, runner, fs = _bootstrap(cfg)
+    run_tag = _make_run_tag()
+    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import ScheduledAgentLoop
     from agenix.agents.organizer_handler import OrganizerHandler
 
-    run_tag = _make_run_tag()
     handler = OrganizerHandler(
         runner=runner,
         fs_backend=fs,
         knowledge_store=pipeline.store,
         run_tag=run_tag,
+        execution_log=exec_log,
     )
-    loop = ScheduledAgentLoop(handler, interval=float(interval))
-    typer.echo(f"Organizer agent started (interval={interval}s).")
+    loop = ScheduledAgentLoop(handler, interval=float(interval), execution_log=exec_log)
+    typer.echo(f"Organizer agent started (interval={interval}s, run_tag={run_tag}).")
     loop.run()
 
 
@@ -338,20 +354,23 @@ def agent_insight_finder(
     """Run the insight finder agent (periodic meta-pattern detection)."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
-    pipeline, runner, fs = _bootstrap(cfg)
+    run_tag = _make_run_tag()
+    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import ScheduledAgentLoop
     from agenix.agents.insight_handler import InsightHandler
 
-    run_tag = _make_run_tag()
     handler = InsightHandler(
         runner=runner,
         fs_backend=fs,
         knowledge_store=pipeline.store,
         run_tag=run_tag,
+        execution_log=exec_log,
     )
-    loop = ScheduledAgentLoop(handler, interval=float(interval))
-    typer.echo(f"Insight finder agent started (interval={interval}s).")
+    loop = ScheduledAgentLoop(
+        handler, interval=float(interval), execution_log=exec_log,
+    )
+    typer.echo(f"Insight finder agent started (interval={interval}s, run_tag={run_tag}).")
     loop.run()
 
 
@@ -383,6 +402,114 @@ def queues_status(
             f"{name:15s}  pending={pending}  processing={processing}  "
             f"done={done}  failed={failed}"
         )
+
+
+# --- Logs sub-commands ---
+
+
+@logs_app.command("show")
+def logs_show(
+    run: str = typer.Option(..., "--run", help="Run tag to show logs for."),
+    agent_filter: Optional[str] = typer.Option(
+        None, "--agent", help="Filter by agent name."
+    ),
+    event_type: Optional[str] = typer.Option(
+        None, "--type", help="Filter by event type."
+    ),
+    limit: int = typer.Option(100, "-n", "--limit", help="Max events to show."),
+    config: Optional[Path] = typer.Option(None, "--config"),
+    env: Optional[str] = typer.Option(None, "--env"),
+) -> None:
+    """Show execution log events for a run."""
+    cfg = _load_config(config, env)
+    log_path = cfg.storage.execution_log_path(run)
+
+    if not log_path.exists():
+        typer.echo(f"No execution log found at {log_path}")
+        raise typer.Exit(1)
+
+    import json
+
+    count = 0
+    with open(log_path) as f:
+        for line in f:
+            if count >= limit:
+                break
+            event = json.loads(line)
+            if agent_filter and event.get("agent") != agent_filter:
+                continue
+            if event_type and event.get("event_type") != event_type:
+                continue
+
+            ts = event["timestamp"][:19]
+            et = event["event_type"]
+            ag = event.get("agent", "")
+            dur = event.get("duration_ms")
+            dur_str = f"  {dur}ms" if dur else ""
+            err = event.get("error", "")
+            err_str = f"  ERR: {err[:60]}" if err else ""
+            data_summary = ""
+            data = event.get("data", {})
+            if data:
+                parts = [f"{k}={v}" for k, v in list(data.items())[:3]]
+                data_summary = "  " + ", ".join(parts)
+
+            typer.echo(f"{ts}  {et:20s}  {ag:12s}{dur_str}{data_summary}{err_str}")
+            count += 1
+
+    if count == 0:
+        typer.echo("No matching events.")
+
+
+@logs_app.command("summary")
+def logs_summary(
+    run: str = typer.Option(..., "--run", help="Run tag to summarize."),
+    config: Optional[Path] = typer.Option(None, "--config"),
+    env: Optional[str] = typer.Option(None, "--env"),
+) -> None:
+    """Show summary statistics for a run's execution log."""
+    cfg = _load_config(config, env)
+    log_path = cfg.storage.execution_log_path(run)
+
+    if not log_path.exists():
+        typer.echo(f"No execution log found at {log_path}")
+        raise typer.Exit(1)
+
+    import json
+    from collections import Counter
+
+    events = []
+    with open(log_path) as f:
+        for line in f:
+            events.append(json.loads(line))
+
+    typer.echo(f"Run: {run}")
+    typer.echo(f"Events: {len(events)}")
+
+    type_counts = Counter(e["event_type"] for e in events)
+    typer.echo("\nEvent counts:")
+    for et, count in type_counts.most_common():
+        typer.echo(f"  {et:25s}  {count}")
+
+    # Agent completion stats
+    completions = [e for e in events if e["event_type"] == "agent_completed"]
+    if completions:
+        typer.echo("\nAgent completions:")
+        for c in completions:
+            d = c.get("data", {})
+            typer.echo(
+                f"  {d.get('agent_name', '?'):15s}  "
+                f"{c.get('duration_ms', 0):>6d}ms  "
+                f"turns={d.get('num_turns', 0)}  "
+                f"cost=${d.get('cost_usd', 0):.4f}"
+            )
+
+    # Errors
+    errors = [e for e in events if e.get("error")]
+    if errors:
+        typer.echo(f"\nErrors: {len(errors)}")
+        for e in errors:
+            typer.echo(f"  [{e['event_type']}] {e['error'][:80]}")
 
 
 # --- Cards sub-commands ---

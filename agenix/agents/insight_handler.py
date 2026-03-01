@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
+from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.loader import load_agent
 from agenix.parsers import parse_insight_cards
 from agenix.runner import ClaudeRunner
@@ -31,12 +32,14 @@ class InsightHandler:
         run_tag: str,
         *,
         recent_limit: int = 20,
+        execution_log: ExecutionLogger | None = None,
     ) -> None:
         self._runner = runner
         self._fs = fs_backend
         self._store = knowledge_store
         self._run_tag = run_tag
         self._recent_limit = recent_limit
+        self._log = execution_log or NullExecutionLogger()
 
     def handle(self) -> None:
         """Run one insight finder cycle over recent trajectories."""
@@ -62,8 +65,13 @@ class InsightHandler:
         })
 
         agent = load_agent("insight_finder")
-        output = self._runner.run(agent, input_payload)
-        cards = parse_insight_cards(output)
+        result = self._runner.run(agent, input_payload)
+        cards = parse_insight_cards(result.output)
+        self._log.output_parsed(
+            parser="parse_insight_cards",
+            success=True,
+            entities=[f"card:{c.card_id}" for c in cards],
+        )
 
         for card in cards:
             source_refs = [
@@ -74,5 +82,6 @@ class InsightHandler:
                 card, source_refs, agent="insight_finder", run_tag=self._run_tag
             )
             self._store.add_card(card)
+            self._log.data_saved("insight_card", card.card_id)
 
         logger.info("Insight finder produced %d insight cards", len(cards))

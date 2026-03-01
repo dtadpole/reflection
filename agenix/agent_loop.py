@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 import signal
 import time
-from typing import Protocol
+from typing import Optional, Protocol
 
+from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.queue.fs_queue import FSQueue
 from agenix.queue.models import QueueMessage
 
@@ -46,6 +47,7 @@ class QueueAgentLoop:
         initial_backoff: float = 1.0,
         max_backoff: float = 30.0,
         backoff_factor: float = 2.0,
+        execution_log: Optional[ExecutionLogger] = None,
     ) -> None:
         self._queue = queue
         self._handler = handler
@@ -53,6 +55,7 @@ class QueueAgentLoop:
         self._max_backoff = max_backoff
         self._backoff_factor = backoff_factor
         self._running = False
+        self._log = execution_log or NullExecutionLogger()
 
     def run(self) -> None:
         """Run the loop until shutdown signal."""
@@ -60,6 +63,7 @@ class QueueAgentLoop:
         self._install_signal_handlers()
         self._queue.initialize()
 
+        self._log.loop_started("queue", queue_name=self._queue.queue_name)
         backoff = self._initial_backoff
         logger.info("Starting queue loop for %s", self._queue.queue_name)
 
@@ -74,6 +78,7 @@ class QueueAgentLoop:
             backoff = self._initial_backoff
             self._process(message)
 
+        self._log.loop_stopped()
         logger.info("Queue loop for %s stopped", self._queue.queue_name)
 
     def stop(self) -> None:
@@ -82,6 +87,9 @@ class QueueAgentLoop:
 
     def _process(self, message: QueueMessage) -> None:
         """Process a single message, completing or failing it."""
+        self._log.message_dequeued(
+            message.message_id, self._queue.queue_name, message.payload,
+        )
         logger.info(
             "Processing message %s from %s",
             message.message_id,
@@ -90,10 +98,14 @@ class QueueAgentLoop:
         try:
             self._handler.handle(message)
             self._queue.complete(message.message_id)
+            self._log.message_completed(message.message_id)
             logger.info("Completed message %s", message.message_id)
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed message %s", message.message_id)
             self._queue.fail(message.message_id, error=str(message.message_id))
+            self._log.message_failed(
+                message.message_id, str(exc), type(exc).__name__,
+            )
 
     def _install_signal_handlers(self) -> None:
         """Install SIGINT/SIGTERM handlers for graceful shutdown."""
@@ -120,25 +132,32 @@ class ScheduledAgentLoop:
         handler: ScheduledHandler,
         *,
         interval: float = 300.0,
+        execution_log: Optional[ExecutionLogger] = None,
     ) -> None:
         self._handler = handler
         self._interval = interval
         self._running = False
+        self._log = execution_log or NullExecutionLogger()
 
     def run(self) -> None:
         """Run the loop until shutdown signal."""
         self._running = True
         self._install_signal_handlers()
 
+        self._log.loop_started("scheduled", interval=self._interval)
         logger.info(
             "Starting scheduled loop (interval=%.0fs)", self._interval
         )
 
         while self._running:
+            self._log.scheduled_trigger(
+                type(self._handler).__name__,
+            )
             try:
                 self._handler.handle()
-            except Exception:
+            except Exception as exc:
                 logger.exception("Scheduled handler failed")
+                self._log.handler_error(str(exc), type(exc).__name__)
 
             # Sleep in small increments so we can respond to shutdown quickly
             elapsed = 0.0
@@ -147,6 +166,7 @@ class ScheduledAgentLoop:
                 time.sleep(step)
                 elapsed += step
 
+        self._log.loop_stopped()
         logger.info("Scheduled loop stopped")
 
     def stop(self) -> None:

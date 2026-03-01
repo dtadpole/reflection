@@ -16,6 +16,7 @@ from agenix.parsers import (
     parse_trajectory,
 )
 from agenix.pipeline import Pipeline
+from agenix.runner import AgentResult
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import (
     Difficulty,
@@ -34,9 +35,10 @@ class FakeRunner:
         self._responses = responses or {}
         self.calls: list[tuple[str, str]] = []
 
-    def run(self, agent: LoadedAgent, input_payload: str) -> str:
+    def run(self, agent: LoadedAgent, input_payload: str) -> AgentResult:
         self.calls.append((agent.name, input_payload))
-        return self._responses.get(agent.name, "{}")
+        output = self._responses.get(agent.name, "{}")
+        return AgentResult(output=output)
 
 
 # --- Canned JSON outputs ---

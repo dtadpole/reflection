@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
+from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.loader import load_agent
 from agenix.parsers import parse_knowledge_actions
 from agenix.runner import ClaudeRunner
@@ -31,12 +32,14 @@ class OrganizerHandler:
         run_tag: str,
         *,
         recent_limit: int = 20,
+        execution_log: ExecutionLogger | None = None,
     ) -> None:
         self._runner = runner
         self._fs = fs_backend
         self._store = knowledge_store
         self._run_tag = run_tag
         self._recent_limit = recent_limit
+        self._log = execution_log or NullExecutionLogger()
 
     def handle(self) -> None:
         """Run one organizer cycle over recent trajectories."""
@@ -66,8 +69,13 @@ class OrganizerHandler:
         })
 
         agent = load_agent("organizer")
-        output = self._runner.run(agent, input_payload)
-        cards = parse_knowledge_actions(output)
+        result = self._runner.run(agent, input_payload)
+        cards = parse_knowledge_actions(result.output)
+        self._log.output_parsed(
+            parser="parse_knowledge_actions",
+            success=True,
+            entities=[f"card:{c.card_id}" for c in cards],
+        )
 
         for card in cards:
             source_refs = [
@@ -78,5 +86,6 @@ class OrganizerHandler:
                 card, source_refs, agent="organizer", run_tag=self._run_tag
             )
             self._store.add_card(card)
+            self._log.data_saved("knowledge_card", card.card_id)
 
         logger.info("Organizer produced %d knowledge cards", len(cards))

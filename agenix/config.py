@@ -56,6 +56,9 @@ class StorageConfig(BaseModel):
     def run_path(self, run_tag: str) -> Path:
         return self.env_path / run_tag
 
+    def execution_log_path(self, run_tag: str) -> Path:
+        return self.run_path(run_tag) / "execution.jsonl"
+
 
 class EmbedderConfig(BaseModel):
     model_name: str = "all-MiniLM-L6-v2"
