@@ -39,7 +39,7 @@ def load_kernelbench(
     all_levels = levels or ["level_1", "level_2", "level_3", "level_4"]
     rows = []
     for level in all_levels:
-        ds = load_dataset(DATASET_NAME, level, split="train")
+        ds = load_dataset(DATASET_NAME, split=level)
         for row in ds:
             rows.append({
                 "code": row["code"],
