@@ -60,9 +60,20 @@ def _bootstrap(config: ReflectionConfig):
 
     registry = ToolRegistry()
 
-    # Load retriever tool (baseline variant — local LanceDB)
-    retriever_def = load_tool("retriever", variant="baseline")
-    registry.register(retriever_def.create_fn(knowledge_store=store))
+    # Load retriever tool — use rerank variant when reranker endpoint is available
+    if config.services.endpoints:
+        from services.reranker.baseline.client import RerankerClient
+
+        rr_client = RerankerClient(config.services.endpoints[0].reranker)
+        retriever_def = load_tool("retriever", variant="rerank")
+        registry.register(
+            retriever_def.create_fn(
+                knowledge_store=store, reranker_client=rr_client
+            )
+        )
+    else:
+        retriever_def = load_tool("retriever", variant="baseline")
+        registry.register(retriever_def.create_fn(knowledge_store=store))
 
     registry.register(create_code_executor_tool(config.code_executor))
 

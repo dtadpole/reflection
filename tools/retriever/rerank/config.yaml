@@ -1,0 +1,4 @@
+name: retriever
+variant: rerank
+# Two-stage pipeline: dense vector retrieval → cross-encoder reranking
+# Retrieves 5*K candidates via embedding search, then reranks to top K

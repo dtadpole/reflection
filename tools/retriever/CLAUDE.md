@@ -30,10 +30,23 @@ The retriever is a thin MCP wrapper around `KnowledgeStore.search()`. It convert
 - **MCP tool name**: `knowledge_retriever`
 - **Dependencies**: `knowledge_store: KnowledgeStore` injected via `create_tool()`
 
+## Variant: `rerank`
+
+- **Backend**: Two-stage pipeline — `KnowledgeStore` (dense retrieval) + `RerankerClient` (cross-encoder)
+- **Stage 1**: Retrieve 5*K candidates via embedding search
+- **Stage 2**: Rerank candidates via cross-encoder (Qwen3-32B), return top K
+- **MCP tool name**: `knowledge_retriever` (same as baseline — only one variant is registered)
+- **Dependencies**: `knowledge_store: KnowledgeStore` + `reranker_client: RerankerClient` injected via `create_tool()`
+- **Auto-selected**: When `config.services.endpoints` is configured (reranker endpoint available)
+- **Scores**: Reranker relevance scores (not embedding distance), 0-1
+
 ## Testing
 
 ```bash
-# Unit-style integration tests (local embedder, no remote service needed)
+# Unit tests for rerank variant (mocked store + reranker)
+uv run pytest tests/unit/test_retriever_rerank.py -v
+
+# Unit-style integration tests for baseline (local embedder, no remote service needed)
 uv run pytest tests/integration/test_retriever_tool.py -v -s
 
 # Tests cover: query, empty query, top_k, type filter, invalid type,
