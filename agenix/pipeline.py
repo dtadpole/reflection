@@ -315,12 +315,23 @@ def _extract_json(text: str) -> dict[str, Any]:
     raise ValueError(f"Could not parse JSON from agent output: {text[:200]}")
 
 
+def _coerce_str(value: Any) -> str:
+    """Coerce a value to string — JSON-encode non-string types."""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
 def _parse_problem(output: str) -> Problem:
     """Parse curator output into a Problem."""
     data = _extract_json(output)
-    test_cases = [
-        TestCase(**tc) for tc in data.get("test_cases", [])
-    ]
+    test_cases = []
+    for tc in data.get("test_cases", []):
+        test_cases.append(TestCase(
+            input=_coerce_str(tc.get("input", "")),
+            expected_output=_coerce_str(tc.get("expected_output", "")),
+            description=tc.get("description", ""),
+        ))
     difficulty = Difficulty(data.get("difficulty", "medium"))
     return Problem(
         title=data["title"],

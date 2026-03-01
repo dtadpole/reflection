@@ -154,6 +154,23 @@ class TestParseProblem:
         assert problem.domain == "general"
         assert problem.difficulty == Difficulty.MEDIUM
 
+    def test_non_string_test_case_values(self):
+        """Test cases with non-string input/output should be coerced to JSON strings."""
+        data = json.dumps({
+            "title": "Add Two Numbers",
+            "description": "Add two numbers.",
+            "test_cases": [
+                {"input": [0, 1], "expected_output": 2},
+                {"input": {"a": 1}, "expected_output": [1, 2, 3]},
+            ],
+        })
+        problem = _parse_problem(data)
+        assert len(problem.test_cases) == 2
+        assert problem.test_cases[0].input == "[0, 1]"
+        assert problem.test_cases[0].expected_output == "2"
+        assert problem.test_cases[1].input == '{"a": 1}'
+        assert problem.test_cases[1].expected_output == "[1, 2, 3]"
+
 
 class TestParseTrajectory:
     def test_basic(self):

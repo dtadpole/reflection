@@ -7,6 +7,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from patches.claude_agent_sdk_mcp_fix import apply as _apply_sdk_fix
+
+_apply_sdk_fix()
+
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from agenix.storage.models import LoadedAgent
@@ -42,20 +46,10 @@ class ClaudeRunner:
         self._cwd = cwd
 
     def run(self, agent: LoadedAgent, input_payload: str) -> str:
-        """Run an agent synchronously. Implements the AgentRunner protocol."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
+        """Run an agent synchronously. Implements the AgentRunner protocol.
 
-        if loop is not None and loop.is_running():
-            # Already inside an async context — run in a new thread
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(asyncio.run, self._run_async(agent, input_payload))
-                return future.result()
-
+        Each agent call gets its own asyncio.run() for clean isolation.
+        """
         return asyncio.run(self._run_async(agent, input_payload))
 
     async def _run_async(self, agent: LoadedAgent, input_payload: str) -> str:
@@ -73,7 +67,6 @@ class ClaudeRunner:
         async for message in query(prompt=input_payload, options=options):
             if isinstance(message, ResultMessage):
                 result_message = message
-                break
 
         if result_message is None:
             raise RuntimeError(f"Agent {agent.name} returned no result")
