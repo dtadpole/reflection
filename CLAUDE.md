@@ -28,6 +28,7 @@ uv run ruff check . --fix                  # Auto-fix lint issues
 
 - `agenix/` — Agent execution framework (Claude Agent SDK runtime, orchestration, tools, storage)
 - `agents/` — Agent definitions (markdown + YAML + Python), each agent is a subfolder
+- `tools/` — Tool definitions (tool.md + config.yaml + logic.py), each tool is a subfolder
 - `cli/` — Typer CLI entry point
 - `config/` — Hydra YAML configs (system-level)
 - `DESIGN.md` — Architecture diagrams and pipeline flow
@@ -71,5 +72,6 @@ Path: `<reflection_data_root>/<reflection_env>/`
 - Tool references: `mcp__<server-key>__<tool-name>` in `allowed_tools`
 - Data models: Pydantic v2 in `agenix/storage/models.py`
 - Storage: JSON files (filesystem) + DuckDB (query) + LanceDB (vector)
-- Embeddings: `sentence-transformers` (`all-MiniLM-L6-v2`), local CPU
+- Knowledge: `tools/knowledge/baseline/` (KnowledgeStore, LanceDB index, embedder)
+- Embeddings: `sentence-transformers` (local CPU) or remote Qwen3-Embedding-8B (GPU)
 - Pipeline: CURATOR → SOLVER → CRITIC → ORGANIZER (+ INSIGHT_FINDER periodically)

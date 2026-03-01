@@ -1,0 +1,26 @@
+# SSH tunnel definitions for port forwarding to remote services.
+# Each entry creates a persistent SSH tunnel managed via launchd (Mac) or systemd (Linux).
+#
+# Usage:
+#   reflection services tunnel start           # Start all tunnels
+#   reflection services tunnel stop            # Stop all tunnels
+#   reflection services tunnel status          # Check tunnel status
+
+tunnels:
+  - name: _one
+    host: 1and1
+    ssh_port: 41922
+    user: centos
+    forwards:
+      - local_port: 41981
+        remote_port: 41981    # kbEval
+
+  - name: _two
+    host: 1and1
+    ssh_port: 42922
+    user: centos
+    forwards:
+      - local_port: 42981
+        remote_port: 42981    # kbEval
+      - local_port: 42982
+        remote_port: 42982    # text_embedding

@@ -2,7 +2,7 @@
 
 Accepts evaluation requests, spawns subprocess workers, and returns results.
 
-Run with: uvicorn services.kb_eval.server:app --host 0.0.0.0 --port 8456
+Run with: uvicorn services.kb_eval.baseline.server:app --host 0.0.0.0 --port 8456
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ async def _run_worker(
 ) -> KernelExecResult:
     """Spawn the worker subprocess and collect its result."""
     cmd = [
-        sys.executable, "-m", "services.kb_eval.worker",
+        sys.executable, "-m", "services.kb_eval.baseline.worker",
         "--wd", str(wd),
         "--reference", str(reference_file),
         "--device", device,

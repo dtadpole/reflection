@@ -38,6 +38,14 @@ class ServiceStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class EmbeddingResult(BaseModel):
+    """Result of a text embedding request."""
+
+    embeddings: list[list[float]]
+    model: str = ""
+    dimension: int = 0
+
+
 class ServiceHealth(BaseModel):
     """Health status of a remote service endpoint."""
 

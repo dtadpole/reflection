@@ -235,14 +235,16 @@ def split_card(
         )
         nc.updated_at = _now()
 
-    # Supersede original
+    # Supersede original — point to first child as canonical successor
     new_ids = [nc.card_id for nc in new_cards]
     original.status = CardStatus.SUPERSEDED
+    original.superseded_by = new_ids[0]
     original.lineage.append(
         LineageEvent(
             operation=LineageOperation.SUPERSEDE,
             agent=agent,
             run_tag=run_tag,
+            superseded_by=new_ids[0],
             description=f"Split into {', '.join(new_ids)}",
         )
     )

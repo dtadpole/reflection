@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.kb_eval.util import (
+from services.kb_eval.baseline.util import (
     _get_call_name,
     _is_triton_jit,
     load_custom_model,

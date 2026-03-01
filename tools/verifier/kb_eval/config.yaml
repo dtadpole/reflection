@@ -1,0 +1,3 @@
+name: verifier
+variant: kb_eval
+# Runtime config comes from services.endpoints[].kb_eval in hosts.yaml

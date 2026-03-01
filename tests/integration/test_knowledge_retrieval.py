@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from agenix.config import EmbedderConfig, ReflectionConfig, StorageConfig
-from agenix.knowledge.store import KnowledgeStore
 from agenix.storage.models import InsightCard, KnowledgeCard
+from tools.knowledge.baseline.store import KnowledgeStore
 
 
 @pytest.fixture

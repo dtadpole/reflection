@@ -16,16 +16,57 @@ _KB_EVAL_FILES = [
     "services/__init__.py",
     "services/models.py",
     "services/kb_eval/__init__.py",
-    "services/kb_eval/__main__.py",
-    "services/kb_eval/server.py",
-    "services/kb_eval/worker.py",
-    "services/kb_eval/util.py",
+    "services/kb_eval/baseline/__init__.py",
+    "services/kb_eval/baseline/__main__.py",
+    "services/kb_eval/baseline/server.py",
+    "services/kb_eval/baseline/worker.py",
+    "services/kb_eval/baseline/util.py",
 ]
 
-_REQUIREMENTS_FILE = "services/kb_eval/deploy/requirements.txt"
+_REQUIREMENTS_FILE = "services/kb_eval/baseline/deploy/requirements.txt"
 
 _UNIT_NAME = "kb-eval"
 _REMOTE_BASE = "~/.reflection/services/kb_eval"
+
+# Text embedding service
+_TEXT_EMBEDDING_FILES = [
+    "services/__init__.py",
+    "services/models.py",
+    "services/text_embedding/__init__.py",
+    "services/text_embedding/baseline/__init__.py",
+    "services/text_embedding/baseline/__main__.py",
+    "services/text_embedding/baseline/server.py",
+    "services/text_embedding/baseline/client.py",
+]
+_TEXT_EMBEDDING_REQUIREMENTS = "services/text_embedding/baseline/deploy/requirements.txt"
+_TEXT_EMBEDDING_UNIT_NAME = "text-embedding"
+
+
+def _render_text_embedding_unit(port: int, model: str, dimension: int, device: str) -> str:
+    """Render the systemd unit file for text embedding service."""
+    exec_start = (
+        "%h/.reflection/services/text_embedding/.venv/bin/python"
+        " -m services.text_embedding.baseline"
+        f" --host 0.0.0.0 --port {port}"
+        f" --model {model}"
+        f" --dimension {dimension}"
+        f" --device {device}"
+    )
+    return textwrap.dedent(f"""\
+        [Unit]
+        Description=Text embedding server (Qwen3-Embedding-8B)
+        After=network.target
+
+        [Service]
+        Type=simple
+        WorkingDirectory=%h/.reflection/services/text_embedding
+        ExecStart={exec_start}
+        Restart=always
+        RestartSec=5
+
+        [Install]
+        WantedBy=default.target
+    """)
 
 
 def _render_unit(port: int, devices: str) -> str:
@@ -33,7 +74,7 @@ def _render_unit(port: int, devices: str) -> str:
     # ExecStart must be a single line — systemd doesn't support shell continuations
     exec_start = (
         "%h/.reflection/services/kb_eval/.venv/bin/python"
-        " -m services.kb_eval"
+        " -m services.kb_eval.baseline"
         f" --host 0.0.0.0 --port {port}"
         f" --devices {devices}"
         " --data-root %h/.reflection"
@@ -92,7 +133,7 @@ class ServiceDeployer:
             remote_base = f"{remote_home}/.reflection/services/kb_eval"
 
             await conn.run(
-                f"mkdir -p {remote_base}/services/kb_eval "
+                f"mkdir -p {remote_base}/services/kb_eval/baseline "
                 f"{remote_home}/.config/systemd/user",
                 check=True,
             )
@@ -220,7 +261,7 @@ class ServiceDeployer:
         Returns:
             ServiceHealth with current status.
         """
-        from services.kb_eval.client import KbEvalClient
+        from services.kb_eval.baseline.client import KbEvalClient
 
         client = KbEvalClient(endpoint.kb_eval)
         try:
@@ -284,6 +325,204 @@ class ServiceDeployer:
 
             result = await conn.run(
                 f"systemctl --user status {_UNIT_NAME} --no-pager"
+            )
+            conn.close()
+            return result.stdout
+
+        except Exception as e:
+            return f"Failed to get status for {endpoint.name}: {e}"
+
+    # --- Text embedding methods ---
+
+    async def deploy_text_embedding(self, endpoint: ServiceEndpoint) -> bool:
+        """Deploy text embedding service to a remote endpoint."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            home_result = await conn.run("echo $HOME", check=True)
+            remote_home = home_result.stdout.strip()
+            remote_base = f"{remote_home}/.reflection/services/text_embedding"
+
+            await conn.run(
+                f"mkdir -p {remote_base}/services/text_embedding/baseline "
+                f"{remote_home}/.config/systemd/user",
+                check=True,
+            )
+
+            project_root = Path(__file__).parent.parent
+            async with conn.start_sftp_client() as sftp:
+                for rel_path in _TEXT_EMBEDDING_FILES:
+                    local = project_root / rel_path
+                    if not local.exists():
+                        logger.warning("File not found: %s", local)
+                        continue
+                    remote = f"{remote_base}/{rel_path}"
+                    await sftp.put(str(local), remote)
+
+                req_local = project_root / _TEXT_EMBEDDING_REQUIREMENTS
+                if req_local.exists():
+                    await sftp.put(str(req_local), f"{remote_base}/requirements.txt")
+
+            venv_path = f"{remote_base}/.venv"
+            uv_bin = f"{remote_home}/.local/bin/uv"
+            venv_check = await conn.run(f"test -f {venv_path}/bin/python")
+            if venv_check.exit_status != 0:
+                logger.info("Creating venv on %s ...", endpoint.name)
+                await conn.run(f"{uv_bin} venv {venv_path}", check=True)
+                logger.info("Installing dependencies on %s ...", endpoint.name)
+                await conn.run(
+                    f"{uv_bin} pip install -p {venv_path}/bin/python "
+                    f"-r {remote_base}/requirements.txt",
+                    check=True,
+                )
+                logger.info("Dependencies installed on %s", endpoint.name)
+            else:
+                logger.info("Updating dependencies on %s ...", endpoint.name)
+                await conn.run(
+                    f"{uv_bin} pip install -q -p {venv_path}/bin/python "
+                    f"-r {remote_base}/requirements.txt",
+                )
+
+            server_cfg = self._config.text_embedding_server
+            unit_content = _render_text_embedding_unit(
+                port=endpoint.text_embedding_port,
+                model=server_cfg.model_name,
+                dimension=server_cfg.dimension,
+                device=server_cfg.device,
+            )
+            unit_path = (
+                f"{remote_home}/.config/systemd/user"
+                f"/{_TEXT_EMBEDDING_UNIT_NAME}.service"
+            )
+            r = await conn.run(
+                f"cat > {unit_path} << 'UNIT_EOF'\n{unit_content}UNIT_EOF"
+            )
+            if r.exit_status != 0:
+                logger.error("Failed to write unit file: %s", r.stderr)
+                conn.close()
+                return False
+
+            await conn.run("loginctl enable-linger $(whoami) 2>/dev/null || true")
+            await conn.run("systemctl --user daemon-reload", check=True)
+            await conn.run(
+                f"systemctl --user enable {_TEXT_EMBEDDING_UNIT_NAME}", check=True
+            )
+            await conn.run(
+                f"systemctl --user restart {_TEXT_EMBEDDING_UNIT_NAME}", check=True
+            )
+
+            import asyncio
+
+            await asyncio.sleep(10)
+            status_result = await conn.run(
+                f"systemctl --user is-active {_TEXT_EMBEDDING_UNIT_NAME}"
+            )
+            is_active = status_result.stdout.strip() == "active"
+
+            conn.close()
+
+            if is_active:
+                logger.info(
+                    "Deployed text-embedding to %s (port %d, model: %s)",
+                    endpoint.name, endpoint.text_embedding_port,
+                    server_cfg.model_name,
+                )
+            else:
+                logger.error(
+                    "text-embedding deployed but not active on %s", endpoint.name
+                )
+
+            return is_active
+
+        except Exception as e:
+            logger.error("Deploy failed for %s: %s", endpoint.name, e)
+            return False
+
+    async def stop_text_embedding(self, endpoint: ServiceEndpoint) -> bool:
+        """Stop text embedding service on a remote endpoint."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            await conn.run(f"systemctl --user stop {_TEXT_EMBEDDING_UNIT_NAME}")
+            conn.close()
+
+            logger.info("Stopped text-embedding on %s", endpoint.name)
+            return True
+
+        except Exception as e:
+            logger.error("Stop failed for %s: %s", endpoint.name, e)
+            return False
+
+    async def status_text_embedding(
+        self, endpoint: ServiceEndpoint
+    ) -> ServiceHealth:
+        """Check if text embedding is running on a remote endpoint."""
+        from services.text_embedding.baseline.client import TextEmbeddingClient
+
+        client = TextEmbeddingClient(endpoint.text_embedding)
+        try:
+            return await client.health()
+        except Exception:
+            return ServiceHealth(
+                name=endpoint.name,
+                status=ServiceStatus.STOPPED,
+                endpoint=endpoint.text_embedding.base_url,
+            )
+
+    async def logs_text_embedding(
+        self, endpoint: ServiceEndpoint, lines: int = 50
+    ) -> str:
+        """Fetch recent journal logs for text embedding on a remote endpoint."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            result = await conn.run(
+                f"journalctl --user -u {_TEXT_EMBEDDING_UNIT_NAME} "
+                f"-n {lines} --no-pager"
+            )
+            conn.close()
+            return result.stdout
+
+        except Exception as e:
+            return f"Failed to fetch logs for {endpoint.name}: {e}"
+
+    async def systemd_status_text_embedding(
+        self, endpoint: ServiceEndpoint
+    ) -> str:
+        """Fetch systemctl status output for text embedding."""
+        try:
+            import asyncssh
+
+            conn = await asyncssh.connect(
+                endpoint.host,
+                port=endpoint.port,
+                username=endpoint.user or None,
+                known_hosts=None,
+            )
+
+            result = await conn.run(
+                f"systemctl --user status {_TEXT_EMBEDDING_UNIT_NAME} --no-pager"
             )
             conn.close()
             return result.stdout

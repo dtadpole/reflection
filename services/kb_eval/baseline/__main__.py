@@ -1,4 +1,4 @@
-"""Entry point for running kbEval server: python -m services.kb_eval [options]."""
+"""Entry point for running kbEval server: python -m services.kb_eval.baseline [options]."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    from services.kb_eval.server import configure
+    from services.kb_eval.baseline.server import configure
 
     devices = [d.strip() for d in args.devices.split(",")]
     configure(
@@ -32,7 +32,7 @@ def main() -> None:
     import uvicorn
 
     uvicorn.run(
-        "services.kb_eval.server:app",
+        "services.kb_eval.baseline.server:app",
         host=args.host,
         port=args.port,
         log_level="info",

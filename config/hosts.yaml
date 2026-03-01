@@ -14,7 +14,7 @@ endpoints:
     user: centos
     kb_eval_port: 41981
     kb_eval:
-      base_url: "http://1and1:41981"
+      base_url: "http://localhost:41981"
       timeout: 300
       retry_count: 4
       retry_interval: 3.0
@@ -25,7 +25,13 @@ endpoints:
     user: centos
     kb_eval_port: 42981
     kb_eval:
-      base_url: "http://1and1:42981"
+      base_url: "http://localhost:42981"
       timeout: 300
       retry_count: 4
       retry_interval: 3.0
+    text_embedding_port: 42982
+    text_embedding:
+      base_url: "http://localhost:42982"
+      timeout: 60
+      retry_count: 3
+      retry_interval: 2.0

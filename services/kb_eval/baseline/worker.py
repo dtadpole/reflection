@@ -4,7 +4,7 @@ Spawned by the server for each evaluation request. Compiles, verifies correctnes
 and benchmarks kernels in an isolated process.
 
 Usage:
-    python -m services.kb_eval.worker \
+    python -m services.kb_eval.baseline.worker \
         --wd <dir> --reference <file> --generated <file> \
         --device cuda:0 --code-type triton --max-critical-time 120
 """
@@ -70,7 +70,7 @@ def run_eval(
     """
     import signal
 
-    from services.kb_eval.util import (
+    from services.kb_eval.baseline.util import (
         graceful_cleanup,
         load_custom_model,
         load_model_and_inputs,

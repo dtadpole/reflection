@@ -1,1 +1,1 @@
-"""kbEval kernel evaluation service — server, client, and worker."""
+"""kbEval kernel evaluation service. Variants live in sub-packages (e.g. baseline)."""

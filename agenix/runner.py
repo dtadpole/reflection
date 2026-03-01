@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Short model name -> full model ID
 _MODEL_MAP: dict[str, str] = {
-    "sonnet": "claude-sonnet-4-5",
-    "opus": "claude-opus-4-1",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-6",
     "haiku": "claude-haiku-4-5",
 }
 

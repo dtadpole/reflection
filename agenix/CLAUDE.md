@@ -29,9 +29,8 @@ Tools are referenced as `mcp__<server-key>__<tool-name>` in `allowed_tools`.
 
 - `storage/models.py` — Pydantic data models (Problem, Trajectory, Card, etc.)
 - `storage/fs_backend.py` — Filesystem CRUD (JSON files) + DuckDB query engine
-- `knowledge/store.py` — Composite store (filesystem + LanceDB)
-- `knowledge/embedder.py` — sentence-transformers wrapper
-- `knowledge/index.py` — LanceDB vector index
+
+Knowledge store, embedder, and vector index live in `tools/knowledge/baseline/`.
 
 ## Pipeline
 

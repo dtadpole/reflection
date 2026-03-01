@@ -84,6 +84,23 @@ class KbEvalClientConfig(BaseModel):
     retry_interval: float = 3.0
 
 
+class TextEmbeddingServerConfig(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 42982
+    model_name: str = "Qwen/Qwen3-Embedding-8B"
+    dimension: int = 4096
+    max_batch_size: int = 64
+    max_seq_length: int = 8192
+    device: str = "cuda:0"
+
+
+class TextEmbeddingClientConfig(BaseModel):
+    base_url: str = "http://localhost:42982"
+    timeout: int = 60
+    retry_count: int = 3
+    retry_interval: float = 2.0
+
+
 class ServiceEndpoint(BaseModel):
     name: str
     host: str
@@ -91,11 +108,36 @@ class ServiceEndpoint(BaseModel):
     user: str = ""
     kb_eval_port: int = 8456  # kbEval server bind port on remote
     kb_eval: KbEvalClientConfig = Field(default_factory=KbEvalClientConfig)
+    text_embedding_port: int = 42982
+    text_embedding: TextEmbeddingClientConfig = Field(
+        default_factory=TextEmbeddingClientConfig
+    )
 
 
 class ServicesConfig(BaseModel):
     endpoints: list[ServiceEndpoint] = Field(default_factory=list)
     kb_eval_server: KbEvalServerConfig = Field(default_factory=KbEvalServerConfig)
+    text_embedding_server: TextEmbeddingServerConfig = Field(
+        default_factory=TextEmbeddingServerConfig
+    )
+
+
+class PortForward(BaseModel):
+    local_port: int
+    remote_port: int
+    remote_host: str = "localhost"
+
+
+class TunnelEndpoint(BaseModel):
+    name: str
+    host: str
+    ssh_port: int = 22
+    user: str = ""
+    forwards: list[PortForward]
+
+
+class TunnelsConfig(BaseModel):
+    tunnels: list[TunnelEndpoint] = Field(default_factory=list)
 
 
 class ReflectionConfig(BaseModel):
@@ -104,6 +146,7 @@ class ReflectionConfig(BaseModel):
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     code_executor: CodeExecutorConfig = Field(default_factory=CodeExecutorConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
+    tunnels: TunnelsConfig = Field(default_factory=TunnelsConfig)
 
 
 def load_config(config_path: Optional[Path] = None) -> ReflectionConfig:
@@ -133,5 +176,14 @@ def load_config(config_path: Optional[Path] = None) -> ReflectionConfig:
             cfg.services.endpoints = [
                 ServiceEndpoint.model_validate(ep) for ep in endpoints_raw
             ]
+
+    # Merge tunnels.yaml into tunnels config
+    tunnels_path = config_path.parent / "tunnels.yaml"
+    if tunnels_path.exists():
+        import yaml
+
+        with open(tunnels_path) as f:
+            tunnels_raw = yaml.safe_load(f) or {}
+        cfg.tunnels = TunnelsConfig.model_validate(tunnels_raw)
 
     return cfg

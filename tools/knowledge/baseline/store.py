@@ -10,8 +10,6 @@ import json
 from typing import Optional
 
 from agenix.config import ReflectionConfig
-from agenix.knowledge.embedder import Embedder
-from agenix.knowledge.index import LanceIndex
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import (
     Card,
@@ -21,6 +19,8 @@ from agenix.storage.models import (
     KnowledgeCard,
     ReflectionCard,
 )
+from tools.knowledge.baseline.embedder import Embedder
+from tools.knowledge.baseline.index import LanceIndex
 
 
 class KnowledgeStore:

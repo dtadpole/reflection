@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
 
 from agenix.config import ReflectionConfig
-from agenix.knowledge.store import KnowledgeStore
 from agenix.loader import load_agent
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.lineage import record_creation
@@ -32,6 +31,7 @@ from agenix.storage.models import (
     TestResult,
     Trajectory,
 )
+from tools.knowledge.baseline.store import KnowledgeStore
 
 logger = logging.getLogger(__name__)
 

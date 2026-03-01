@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agenix.config import KbEvalClientConfig
-from services.kb_eval.client import KbEvalClient
+from services.kb_eval.baseline.client import KbEvalClient
 from services.models import ServiceStatus
 
 
@@ -51,7 +51,7 @@ class TestKbEvalClientHealth:
         mock_client = AsyncMock()
         mock_client.get.return_value = mock_response
 
-        with patch("services.kb_eval.client.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.kb_eval.baseline.client.httpx.AsyncClient") as mock_client_cls:
             mock_client_cls.return_value.__aenter__.return_value = mock_client
             mock_client_cls.return_value.__aexit__.return_value = False
 

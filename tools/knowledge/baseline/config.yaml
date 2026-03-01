@@ -1,0 +1,3 @@
+name: knowledge
+variant: baseline
+# Runtime config comes from config.embedder (model_name, top_k) and config.storage
