@@ -11,10 +11,10 @@ from agenix.tools.registry import ToolRegistry
 
 class TestResolveModel:
     def test_sonnet(self):
-        assert resolve_model("sonnet") == "claude-sonnet-4-5"
+        assert resolve_model("sonnet") == "claude-sonnet-4-6"
 
     def test_opus(self):
-        assert resolve_model("opus") == "claude-opus-4-1"
+        assert resolve_model("opus") == "claude-opus-4-6"
 
     def test_haiku(self):
         assert resolve_model("haiku") == "claude-haiku-4-5"
@@ -46,7 +46,7 @@ class TestBuildOptions:
         agent = _make_agent()
         opts = runner._build_options(agent)
 
-        assert opts.model == "claude-sonnet-4-5"
+        assert opts.model == "claude-sonnet-4-6"
         assert opts.system_prompt == "You are a test agent."
         assert opts.max_turns == 10
         assert opts.permission_mode == "bypassPermissions"
@@ -55,7 +55,7 @@ class TestBuildOptions:
         runner = ClaudeRunner()
         agent = _make_agent(config=AgentConfig(model="opus"))
         opts = runner._build_options(agent)
-        assert opts.model == "claude-opus-4-1"
+        assert opts.model == "claude-opus-4-6"
 
     def test_builtin_tools_only(self):
         runner = ClaudeRunner()
