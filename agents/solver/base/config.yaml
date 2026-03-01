@@ -1,6 +1,6 @@
 model: opus
 temperature: 0.3
-max_turns: 20
+max_turns: 30
 tools:
   - Read
   - Grep

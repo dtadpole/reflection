@@ -1,57 +1,40 @@
 # Curator
 
 ## Description
-Proposes coding problems of varying difficulty for the solver to practice on.
+Pure Python KernelBench loader — no LLM required.
 
 ## System Prompt
-You are a coding problem curator. Your job is to create well-defined programming problems that test specific skills and concepts.
+This agent has no system prompt. The curator is implemented as pure Python that samples problems from the KernelBench dataset (ScalingIntelligence/KernelBench on HuggingFace).
 
-When creating problems:
-1. Write a clear, unambiguous problem description
-2. Specify input/output format precisely
-3. Include 3-5 test cases covering normal cases, edge cases, and corner cases
-4. Tag the problem with relevant domains (e.g., "arrays", "dynamic_programming", "strings")
-5. Assign an appropriate difficulty level (easy, medium, hard)
+## How It Works
 
-Focus on problems that are:
-- Self-contained (no external dependencies)
-- Verifiable with deterministic test cases
-- Progressively challenging across iterations
+The curator is not an LLM agent. It is a Python function (`agenix/agents/curator_handler.py`) that:
 
-You must respond with a JSON object matching the Problem schema.
+1. Loads the KernelBench dataset from HuggingFace (270 PyTorch GPU kernel problems)
+2. Randomly samples N problems from specified difficulty levels
+3. Converts each to a `Problem` model with `reference_code` (full PyTorch source)
+4. Saves to FSBackend and enqueues to the `problems` queue
+5. Deduplicates by title to handle restarts
+
+### KernelBench Dataset
+
+- **Source**: `ScalingIntelligence/KernelBench` on HuggingFace
+- **Size**: 270 problems across 4 levels
+  - `level_1`: 100 problems (easy — single ops like ReLU, softmax)
+  - `level_2`: 100 problems (medium — fused ops, small models)
+  - `level_3`: 50 problems (hard — multi-op fusion, complex patterns)
+  - `level_4`: 20 problems (hard — full model conversions)
+- **Each row**: `{code, level, name, problem_id}`
+  - `code` is a complete PyTorch module with `Model(nn.Module)`, `get_inputs()`, `get_init_inputs()`
+
+### CLI Usage
+
+```bash
+reflection agent curator -n 100 --levels level_1,level_2 --seed 42 -v
+```
 
 ## Input Format
-A JSON object with:
-- `iteration`: Current iteration number
-- `previous_domains`: Domains already covered
-- `previous_difficulties`: Distribution of difficulties so far
-- `knowledge_hints`: Relevant knowledge cards (if any)
+N/A (pure Python, no LLM input)
 
 ## Output Format
-A JSON object with fields:
-- `title`: Short problem title
-- `description`: Full problem description
-- `test_cases`: Array of `{"input": "...", "expected_output": "...", "description": "..."}`
-- `domain`: Problem domain tag
-- `difficulty`: "easy" | "medium" | "hard"
-
-## Examples
-Input:
-```json
-{"iteration": 1, "previous_domains": [], "previous_difficulties": [], "knowledge_hints": []}
-```
-
-Output:
-```json
-{
-  "title": "Two Sum",
-  "description": "Given a list of integers and a target sum, return the indices of two numbers that add up to the target. Each input has exactly one solution.",
-  "test_cases": [
-    {"input": "[2,7,11,15], 9", "expected_output": "[0, 1]", "description": "Basic case"},
-    {"input": "[3,2,4], 6", "expected_output": "[1, 2]", "description": "Non-adjacent elements"},
-    {"input": "[-1,0,1], 0", "expected_output": "[0, 2]", "description": "Negative numbers"}
-  ],
-  "domain": "arrays",
-  "difficulty": "easy"
-}
-```
+N/A (pure Python, no LLM output)

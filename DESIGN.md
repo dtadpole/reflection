@@ -1,40 +1,55 @@
 # Reflection: System Design
 
-## Autonomous Loop (Pipeline Flow)
+## Async Queue-Based Architecture
+
+Agents operate independently in separate processes, communicating via filesystem
+queues and a shared knowledge base.
 
 ```
-                              CURATOR
-                                 │
-                                 ▼
-                            [Problems]
-                                 │
-                                 ▼
-   <Verifier> ◀───────────── SOLVER ◀───────────────── <Retriever>
-        │                     ▲  │                          ▲
-        │                     │  │                          │
-        └─────────────────────┘  │                          │
-               (loop)            │                          │
-                                 ▼                          │
-                   ┌────────[Trajectory]───────┐            │
-                   │             │             │            │
-                   │             ▼             │            │
-                   │          CRITIC           │            │
-                   │             │             │            │
-                   │             ▼             │            │
-                   │     [ReflectionCards]     │            │
-                   ▼             │             ▼            │
-                   ┌-────────────┴─────────────┐            │
-                   │                           │            │
-                   ▼                           ▼            │
-               ORGANIZER                INSIGHT_FINDER      │
-                   │                           │            │
-                   ▼                           ▼            │
-             [KnowledgeCards]           [InsightCards]      │
-                   │                           │            │
-                   └────────────┬──────────────┘            │
-                                ▼                           │
-                        [Knowledge Base] ───────────────────┘
+                    CURATOR (pure Python)
+                         │
+                         ▼
+                  [problems queue]
+                         │
+                         ▼
+<Verifier> ◀──── SOLVER ◀──── <Retriever>
+    │             ▲  │              ▲
+    └─────────────┘  │              │
+       (iterate)     ▼              │
+              [trajectories queue]  │
+                         │          │
+                         ▼          │
+                      CRITIC        │
+                         │          │
+                         ▼          │
+                  [Knowledge Base] ─┘
+                     ▲        ▲
+                     │        │
+               ORGANIZER   INSIGHT_FINDER
+               (periodic)   (periodic)
 ```
+
+### Queue Topology
+
+| Queue | Producer | Consumer | Payload |
+|-------|----------|----------|---------|
+| `problems` | CURATOR | SOLVER | `{problem_id, title}` |
+| `trajectories` | SOLVER | CRITIC | `{trajectory_id, problem_id, run_tag}` |
+
+### Agent Types
+
+| Agent | Loop Type | Description |
+|-------|-----------|-------------|
+| CURATOR | One-shot | Pure Python KernelBench loader (no LLM) |
+| SOLVER | QueueAgentLoop | Polls problems queue, writes Triton kernels |
+| CRITIC | QueueAgentLoop | Polls trajectories queue, produces reflection cards |
+| ORGANIZER | ScheduledAgentLoop (5 min) | Synthesizes knowledge from recent data |
+| INSIGHT_FINDER | ScheduledAgentLoop (10 min) | Cross-cutting meta-pattern detection |
+
+### Problem Source: KernelBench
+
+270 PyTorch GPU kernel problems from HuggingFace (`ScalingIntelligence/KernelBench`).
+Each problem contains reference PyTorch code; solver writes Triton kernel replacements.
 
 ## Data Layout
 
@@ -53,14 +68,16 @@ a query engine over these files (no persistent database).
 │   ├── lance/                             ← LanceDB vector index (shared)
 │   │   └── cards.lance/
 │   ├── queues/                            ← message queues (shared)
-│   │   ├── solver/
+│   │   ├── problems/                      ← CURATOR → SOLVER
 │   │   │   ├── pending/<message_id>.json
 │   │   │   ├── processing/<message_id>.json
 │   │   │   ├── done/<message_id>.json
 │   │   │   └── failed/<message_id>.json
-│   │   ├── critic/
-│   │   ├── organizer/
-│   │   └── insight_finder/
+│   │   └── trajectories/                  ← SOLVER → CRITIC
+│   │       ├── pending/
+│   │       ├── processing/
+│   │       ├── done/
+│   │       └── failed/
 │   ├── run_20260228_143000/               ← run_tag
 │   │   ├── curator/
 │   │   │   └── <problem_id>.json          ← proposed problems

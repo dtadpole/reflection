@@ -1,0 +1,136 @@
+"""Curator handler — pure Python KernelBench loader (no LLM).
+
+Loads GPU kernel problems from the ScalingIntelligence/KernelBench
+HuggingFace dataset, converts them to Problem models, saves to
+FSBackend, and enqueues to the problems queue.
+"""
+
+from __future__ import annotations
+
+import logging
+import random
+from typing import Optional
+
+from agenix.queue.fs_queue import FSQueue
+from agenix.storage.fs_backend import FSBackend
+from agenix.storage.models import Difficulty, Problem
+
+logger = logging.getLogger(__name__)
+
+DATASET_NAME = "ScalingIntelligence/KernelBench"
+
+LEVEL_DIFFICULTY = {
+    "level_1": Difficulty.EASY,
+    "level_2": Difficulty.MEDIUM,
+    "level_3": Difficulty.HARD,
+    "level_4": Difficulty.HARD,
+}
+
+
+def load_kernelbench(
+    levels: Optional[list[str]] = None,
+) -> list[dict]:
+    """Load KernelBench dataset from HuggingFace.
+
+    Returns list of dicts with keys: code, level, name, problem_id.
+    """
+    from datasets import load_dataset
+
+    all_levels = levels or ["level_1", "level_2", "level_3", "level_4"]
+    rows = []
+    for level in all_levels:
+        ds = load_dataset(DATASET_NAME, level, split="train")
+        for row in ds:
+            rows.append({
+                "code": row["code"],
+                "level": level,
+                "name": row["name"],
+                "kb_problem_id": row.get("problem_id", row["name"]),
+            })
+    logger.info("Loaded %d problems from KernelBench (levels=%s)", len(rows), all_levels)
+    return rows
+
+
+def sample_problems(
+    rows: list[dict],
+    n: int,
+    seed: Optional[int] = None,
+) -> list[dict]:
+    """Randomly sample N problems from the loaded rows."""
+    rng = random.Random(seed)
+    if n >= len(rows):
+        return rows
+    return rng.sample(rows, n)
+
+
+def row_to_problem(row: dict) -> Problem:
+    """Convert a KernelBench row to a Problem model."""
+    level = row["level"]
+    name = row["name"]
+    code = row["code"]
+
+    return Problem(
+        title=f"[KernelBench/{level}] {name}",
+        description=(
+            f"Convert the following PyTorch code to an optimized Triton GPU kernel.\n\n"
+            f"**Level**: {level}\n"
+            f"**Problem**: {name}\n\n"
+            f"## Reference PyTorch Code\n\n"
+            f"```python\n{code}\n```\n\n"
+            f"Write a `ModelNew` class that produces the same outputs as the reference "
+            f"`Model` class but uses custom Triton kernels for the compute-intensive "
+            f"operations. Your implementation must:\n"
+            f"1. Be functionally correct (torch.allclose with the reference)\n"
+            f"2. Maintain the same interface (same inputs/outputs)\n"
+            f"3. Aim for better performance than the PyTorch reference"
+        ),
+        reference_code=code,
+        domain="triton_kernels",
+        difficulty=LEVEL_DIFFICULTY.get(level, Difficulty.MEDIUM),
+    )
+
+
+def run_curator(
+    fs_backend: FSBackend,
+    queue: FSQueue,
+    *,
+    n: int = 100,
+    levels: Optional[list[str]] = None,
+    seed: Optional[int] = None,
+) -> list[Problem]:
+    """Load KernelBench problems, dedup, save, and enqueue.
+
+    Returns the list of newly created problems.
+    """
+    queue.initialize()
+
+    # Load existing problem titles for dedup
+    existing_titles = {p.title for p in fs_backend.list_problems(limit=1000)}
+
+    rows = load_kernelbench(levels=levels)
+    sampled = sample_problems(rows, n, seed=seed)
+
+    created = []
+    for row in sampled:
+        problem = row_to_problem(row)
+        if problem.title in existing_titles:
+            logger.debug("Skipping duplicate: %s", problem.title)
+            continue
+
+        fs_backend.save_problem(problem)
+        queue.enqueue(
+            sender="curator",
+            payload={
+                "problem_id": problem.problem_id,
+                "title": problem.title,
+            },
+        )
+        existing_titles.add(problem.title)
+        created.append(problem)
+
+    logger.info(
+        "Curator created %d problems (%d skipped as duplicates)",
+        len(created),
+        len(sampled) - len(created),
+    )
+    return created

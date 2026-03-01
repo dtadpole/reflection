@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional, Protocol
+from typing import Optional, Protocol
 
 from agenix.config import ReflectionConfig
 from agenix.loader import load_agent
+from agenix.parsers import (
+    parse_insight_cards,
+    parse_knowledge_actions,
+    parse_problem,
+    parse_reflection_cards,
+    parse_trajectory,
+)
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.lineage import record_creation
 from agenix.storage.models import (
-    Difficulty,
     InsightCard,
     IterationResult,
     KnowledgeCard,
@@ -25,10 +30,7 @@ from agenix.storage.models import (
     Problem,
     ProblemStatus,
     ReflectionCard,
-    ReflectionCategory,
     SourceReference,
-    TestCase,
-    TestResult,
     Trajectory,
 )
 from tools.knowledge.baseline.store import KnowledgeStore
@@ -145,7 +147,7 @@ class Pipeline:
         })
 
         output = self._runner.run(agent, input_payload)
-        problem = _parse_problem(output)
+        problem = parse_problem(output)
         self._fs.save_problem(problem)
         return problem
 
@@ -170,7 +172,7 @@ class Pipeline:
 
         self._fs.update_problem_status(problem.problem_id, ProblemStatus.SOLVING)
         output = self._runner.run(agent, input_payload)
-        trajectory = _parse_trajectory(output, problem.problem_id)
+        trajectory = parse_trajectory(output, problem.problem_id)
         self._fs.save_trajectory(trajectory, run_tag)
 
         new_status = ProblemStatus.SOLVED if trajectory.is_correct else ProblemStatus.FAILED
@@ -191,7 +193,7 @@ class Pipeline:
         })
 
         output = self._runner.run(agent, input_payload)
-        cards = _parse_reflection_cards(output, trajectory.trajectory_id)
+        cards = parse_reflection_cards(output, trajectory.trajectory_id)
 
         for card in cards:
             source_refs = [
@@ -220,7 +222,7 @@ class Pipeline:
         })
 
         output = self._runner.run(agent, input_payload)
-        cards = _parse_knowledge_actions(output)
+        cards = parse_knowledge_actions(output)
 
         for card in cards:
             source_refs = [
@@ -257,7 +259,7 @@ class Pipeline:
         })
 
         output = self._runner.run(agent, input_payload)
-        cards = _parse_insight_cards(output)
+        cards = parse_insight_cards(output)
 
         for card in cards:
             source_refs = [
@@ -272,152 +274,3 @@ class Pipeline:
     def _should_run_insight_finder(self, iteration: int) -> bool:
         cfg = self._config.pipeline.insight_finder
         return cfg.enabled and iteration % cfg.frequency == 0
-
-
-# --- Output Parsers ---
-
-
-def _extract_json(text: str) -> dict[str, Any]:
-    """Extract a JSON object from agent output text.
-
-    Handles:
-    1. Raw JSON
-    2. JSON wrapped in markdown code blocks (```json ... ```)
-    3. Prose-prefixed JSON (text before the first '{' or '[')
-    """
-    text = text.strip()
-
-    # Try direct parse first
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Try extracting from code block
-    if "```" in text:
-        for block in text.split("```"):
-            block = block.strip()
-            if block.startswith("json"):
-                block = block[4:].strip()
-            try:
-                return json.loads(block)
-            except json.JSONDecodeError:
-                continue
-
-    # Try scanning for first '{' (prose-prefixed JSON)
-    brace = text.find("{")
-    if brace >= 0:
-        try:
-            return json.loads(text[brace:])
-        except json.JSONDecodeError:
-            pass
-
-    raise ValueError(f"Could not parse JSON from agent output: {text[:200]}")
-
-
-def _coerce_str(value: Any) -> str:
-    """Coerce a value to string — JSON-encode non-string types."""
-    if isinstance(value, str):
-        return value
-    return json.dumps(value)
-
-
-def _parse_problem(output: str) -> Problem:
-    """Parse curator output into a Problem."""
-    data = _extract_json(output)
-    test_cases = []
-    for tc in data.get("test_cases", []):
-        test_cases.append(TestCase(
-            input=_coerce_str(tc.get("input", "")),
-            expected_output=_coerce_str(tc.get("expected_output", "")),
-            description=tc.get("description", ""),
-        ))
-    difficulty = Difficulty(data.get("difficulty", "medium"))
-    return Problem(
-        title=data["title"],
-        description=data["description"],
-        test_cases=test_cases,
-        domain=data.get("domain", "general"),
-        difficulty=difficulty,
-    )
-
-
-def _parse_trajectory(output: str, problem_id: str) -> Trajectory:
-    """Parse solver output into a Trajectory."""
-    data = _extract_json(output)
-    test_results = [
-        TestResult(
-            test_case=TestCase(**tr["test_case"]),
-            passed=tr["passed"],
-            actual_output=tr.get("actual_output", ""),
-            error=tr.get("error", ""),
-        )
-        for tr in data.get("test_results", [])
-    ]
-    return Trajectory(
-        problem_id=problem_id,
-        code_solution=data.get("code_solution", ""),
-        final_answer=data.get("final_answer", ""),
-        is_correct=data.get("is_correct", False),
-        test_results=test_results,
-        completed_at=datetime.now(timezone.utc),
-    )
-
-
-def _parse_reflection_cards(
-    output: str, trajectory_id: str
-) -> list[ReflectionCard]:
-    """Parse critic output into ReflectionCards."""
-    data = _extract_json(output)
-    cards = []
-    for rc in data.get("reflection_cards", []):
-        try:
-            category = ReflectionCategory(rc.get("category", "general"))
-        except ValueError:
-            category = ReflectionCategory.GENERAL
-        cards.append(ReflectionCard(
-            title=rc["title"],
-            content=rc["content"],
-            trajectory_id=trajectory_id,
-            category=category,
-            confidence=rc.get("confidence", 0.5),
-            tags=rc.get("tags", []),
-            supporting_steps=rc.get("supporting_steps", []),
-        ))
-    return cards
-
-
-def _parse_knowledge_actions(output: str) -> list[KnowledgeCard]:
-    """Parse organizer output into KnowledgeCards (create actions only for now)."""
-    data = _extract_json(output)
-    cards = []
-    for action in data.get("actions", []):
-        if action.get("action") != "create":
-            # Revise/merge are handled in future phases
-            continue
-        cards.append(KnowledgeCard(
-            title=action["title"],
-            content=action["content"],
-            domain=action.get("domain", "general"),
-            applicability=action.get("applicability", ""),
-            limitations=action.get("limitations", ""),
-            tags=action.get("tags", []),
-            related_card_ids=action.get("related_card_ids", []),
-        ))
-    return cards
-
-
-def _parse_insight_cards(output: str) -> list[InsightCard]:
-    """Parse insight finder output into InsightCards."""
-    data = _extract_json(output)
-    cards = []
-    for ic in data.get("insight_cards", []):
-        cards.append(InsightCard(
-            title=ic["title"],
-            content=ic["content"],
-            hypothesis=ic.get("hypothesis", ""),
-            evidence_for=ic.get("evidence_for", []),
-            evidence_against=ic.get("evidence_against", []),
-            tags=ic.get("tags", []),
-        ))
-    return cards

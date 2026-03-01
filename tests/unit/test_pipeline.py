@@ -7,15 +7,15 @@ import json
 import pytest
 
 from agenix.config import ReflectionConfig, StorageConfig
-from agenix.pipeline import (
-    Pipeline,
-    _extract_json,
-    _parse_insight_cards,
-    _parse_knowledge_actions,
-    _parse_problem,
-    _parse_reflection_cards,
-    _parse_trajectory,
+from agenix.parsers import (
+    extract_json,
+    parse_insight_cards,
+    parse_knowledge_actions,
+    parse_problem,
+    parse_reflection_cards,
+    parse_trajectory,
 )
+from agenix.pipeline import Pipeline
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import (
     Difficulty,
@@ -112,37 +112,37 @@ INSIGHT_FINDER_OUTPUT = json.dumps({
 
 class TestExtractJson:
     def test_raw_json(self):
-        data = _extract_json('{"key": "value"}')
+        data = extract_json('{"key": "value"}')
         assert data == {"key": "value"}
 
     def test_json_in_code_block(self):
         text = '```json\n{"key": "value"}\n```'
-        data = _extract_json(text)
+        data = extract_json(text)
         assert data == {"key": "value"}
 
     def test_json_with_surrounding_text(self):
         text = 'Here is the result:\n```\n{"key": "value"}\n```\nDone.'
-        data = _extract_json(text)
+        data = extract_json(text)
         assert data == {"key": "value"}
 
     def test_prose_prefixed_json(self):
         text = 'Here is my answer:\n{"key": "value"}'
-        data = _extract_json(text)
+        data = extract_json(text)
         assert data == {"key": "value"}
 
     def test_prose_prefixed_nested_json(self):
         text = 'Sure, here is the output:\n\n{"title": "Foo", "items": [1, 2, 3]}'
-        data = _extract_json(text)
+        data = extract_json(text)
         assert data == {"title": "Foo", "items": [1, 2, 3]}
 
     def test_invalid_json_raises(self):
         with pytest.raises(ValueError, match="Could not parse JSON"):
-            _extract_json("not json at all")
+            extract_json("not json at all")
 
 
 class TestParseProblem:
     def test_basic(self):
-        problem = _parse_problem(CURATOR_OUTPUT)
+        problem = parse_problem(CURATOR_OUTPUT)
         assert problem.title == "Reverse a String"
         assert problem.domain == "strings"
         assert problem.difficulty == Difficulty.EASY
@@ -150,7 +150,7 @@ class TestParseProblem:
 
     def test_defaults(self):
         minimal = json.dumps({"title": "Foo", "description": "Bar"})
-        problem = _parse_problem(minimal)
+        problem = parse_problem(minimal)
         assert problem.domain == "general"
         assert problem.difficulty == Difficulty.MEDIUM
 
@@ -164,7 +164,7 @@ class TestParseProblem:
                 {"input": {"a": 1}, "expected_output": [1, 2, 3]},
             ],
         })
-        problem = _parse_problem(data)
+        problem = parse_problem(data)
         assert len(problem.test_cases) == 2
         assert problem.test_cases[0].input == "[0, 1]"
         assert problem.test_cases[0].expected_output == "2"
@@ -174,7 +174,7 @@ class TestParseProblem:
 
 class TestParseTrajectory:
     def test_basic(self):
-        traj = _parse_trajectory(SOLVER_OUTPUT, "prob_123")
+        traj = parse_trajectory(SOLVER_OUTPUT, "prob_123")
         assert traj.problem_id == "prob_123"
         assert traj.is_correct is True
         assert traj.code_solution == "def solve(s): return s[::-1]"
@@ -184,7 +184,7 @@ class TestParseTrajectory:
 
 class TestParseReflectionCards:
     def test_basic(self):
-        cards = _parse_reflection_cards(CRITIC_OUTPUT, "traj_123")
+        cards = parse_reflection_cards(CRITIC_OUTPUT, "traj_123")
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "Python slicing for reversal"
@@ -201,13 +201,13 @@ class TestParseReflectionCards:
                 "category": "nonexistent",
             }],
         })
-        cards = _parse_reflection_cards(output, "traj_1")
+        cards = parse_reflection_cards(output, "traj_1")
         assert cards[0].category == ReflectionCategory.GENERAL
 
 
 class TestParseKnowledgeActions:
     def test_create_action(self):
-        cards = _parse_knowledge_actions(ORGANIZER_OUTPUT)
+        cards = parse_knowledge_actions(ORGANIZER_OUTPUT)
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "String Reversal Techniques"
@@ -221,14 +221,14 @@ class TestParseKnowledgeActions:
                 {"action": "create", "title": "Z", "content": "W"},
             ],
         })
-        cards = _parse_knowledge_actions(output)
+        cards = parse_knowledge_actions(output)
         assert len(cards) == 1
         assert cards[0].title == "Z"
 
 
 class TestParseInsightCards:
     def test_basic(self):
-        cards = _parse_insight_cards(INSIGHT_FINDER_OUTPUT)
+        cards = parse_insight_cards(INSIGHT_FINDER_OUTPUT)
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "Python idioms improve conciseness"
@@ -285,7 +285,7 @@ class TestPipelineCurator:
 class TestPipelineSolver:
     def test_run_solver(self, pipeline_setup):
         pipeline, runner, fs = pipeline_setup
-        problem = _parse_problem(CURATOR_OUTPUT)
+        problem = parse_problem(CURATOR_OUTPUT)
         fs.save_problem(problem)
 
         traj = pipeline._run_solver("run_test", problem)
@@ -304,8 +304,8 @@ class TestPipelineSolver:
 class TestPipelineCritic:
     def test_run_critic(self, pipeline_setup):
         pipeline, runner, fs = pipeline_setup
-        problem = _parse_problem(CURATOR_OUTPUT)
-        traj = _parse_trajectory(SOLVER_OUTPUT, problem.problem_id)
+        problem = parse_problem(CURATOR_OUTPUT)
+        traj = parse_trajectory(SOLVER_OUTPUT, problem.problem_id)
 
         cards = pipeline._run_critic("run_test", problem, traj)
         assert len(cards) == 1

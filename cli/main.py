@@ -14,10 +14,14 @@ from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import CardType
 
 app = typer.Typer(name="reflection", help="Self-evolving multi-agent coding system.")
+agent_app = typer.Typer(help="Run individual agents.")
+queues_app = typer.Typer(help="Queue management.")
 cards_app = typer.Typer(help="Manage knowledge cards.")
 trajectories_app = typer.Typer(help="Manage solver trajectories.")
 services_app = typer.Typer(help="Manage remote services.")
 tunnel_app = typer.Typer(help="Manage SSH tunnels for port forwarding.")
+app.add_typer(agent_app, name="agent")
+app.add_typer(queues_app, name="queues")
 app.add_typer(cards_app, name="cards")
 app.add_typer(trajectories_app, name="trajectories")
 app.add_typer(services_app, name="services")
@@ -208,6 +212,177 @@ def status(
     typer.echo(f"  Knowledge: {cards_knowledge}")
     typer.echo(f"  Reflection: {cards_reflection}")
     typer.echo(f"  Insight:   {cards_insight}")
+
+
+# --- Agent sub-commands ---
+
+
+@agent_app.command("curator")
+def agent_curator(
+    n: int = typer.Option(100, "-n", help="Number of problems to sample."),
+    levels: Optional[str] = typer.Option(
+        None, "--levels", help="Comma-separated levels (level_1,level_2,level_3,level_4)."
+    ),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Random seed."),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Load problems from KernelBench and enqueue them."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+    fs = FSBackend(cfg.storage)
+    fs.initialize()
+
+    from agenix.agents.curator_handler import run_curator
+    from agenix.queue.fs_queue import FSQueue
+
+    queue = FSQueue("problems", cfg.storage)
+    level_list = levels.split(",") if levels else None
+    problems = run_curator(fs, queue, n=n, levels=level_list, seed=seed)
+    typer.echo(f"Created {len(problems)} problems.")
+
+
+@agent_app.command("solver")
+def agent_solver(
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Run the solver agent (polls problems queue)."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+    pipeline, runner, fs = _bootstrap(cfg)
+
+    from agenix.agent_loop import QueueAgentLoop
+    from agenix.agents.solver_handler import SolverHandler
+    from agenix.queue.fs_queue import FSQueue
+
+    problems_q = FSQueue("problems", cfg.storage)
+    trajectories_q = FSQueue("trajectories", cfg.storage)
+    run_tag = _make_run_tag()
+
+    handler = SolverHandler(
+        runner=runner,
+        fs_backend=fs,
+        knowledge_store=pipeline.store,
+        trajectories_queue=trajectories_q,
+        run_tag=run_tag,
+    )
+    loop = QueueAgentLoop(problems_q, handler)
+    typer.echo(f"Solver agent started (run_tag={run_tag}).")
+    loop.run()
+
+
+@agent_app.command("critic")
+def agent_critic(
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Run the critic agent (polls trajectories queue)."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+    pipeline, runner, fs = _bootstrap(cfg)
+
+    from agenix.agent_loop import QueueAgentLoop
+    from agenix.agents.critic_handler import CriticHandler
+    from agenix.queue.fs_queue import FSQueue
+
+    trajectories_q = FSQueue("trajectories", cfg.storage)
+
+    handler = CriticHandler(
+        runner=runner,
+        fs_backend=fs,
+        knowledge_store=pipeline.store,
+    )
+    loop = QueueAgentLoop(trajectories_q, handler)
+    typer.echo("Critic agent started.")
+    loop.run()
+
+
+@agent_app.command("organizer")
+def agent_organizer(
+    interval: int = typer.Option(300, "--interval", help="Interval between runs (seconds)."),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Run the organizer agent (periodic knowledge synthesis)."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+    pipeline, runner, fs = _bootstrap(cfg)
+
+    from agenix.agent_loop import ScheduledAgentLoop
+    from agenix.agents.organizer_handler import OrganizerHandler
+
+    run_tag = _make_run_tag()
+    handler = OrganizerHandler(
+        runner=runner,
+        fs_backend=fs,
+        knowledge_store=pipeline.store,
+        run_tag=run_tag,
+    )
+    loop = ScheduledAgentLoop(handler, interval=float(interval))
+    typer.echo(f"Organizer agent started (interval={interval}s).")
+    loop.run()
+
+
+@agent_app.command("insight-finder")
+def agent_insight_finder(
+    interval: int = typer.Option(600, "--interval", help="Interval between runs (seconds)."),
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Run the insight finder agent (periodic meta-pattern detection)."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+    pipeline, runner, fs = _bootstrap(cfg)
+
+    from agenix.agent_loop import ScheduledAgentLoop
+    from agenix.agents.insight_handler import InsightHandler
+
+    run_tag = _make_run_tag()
+    handler = InsightHandler(
+        runner=runner,
+        fs_backend=fs,
+        knowledge_store=pipeline.store,
+        run_tag=run_tag,
+    )
+    loop = ScheduledAgentLoop(handler, interval=float(interval))
+    typer.echo(f"Insight finder agent started (interval={interval}s).")
+    loop.run()
+
+
+# --- Queue sub-commands ---
+
+
+@queues_app.command("status")
+def queues_status(
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Show queue status (pending/processing/done/failed counts)."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+
+    from agenix.queue.fs_queue import FSQueue
+    from agenix.queue.models import MessageState
+
+    queue_names = ["problems", "trajectories"]
+    for name in queue_names:
+        q = FSQueue(name, cfg.storage)
+        q.initialize()
+        pending = q.count(MessageState.PENDING)
+        processing = q.count(MessageState.PROCESSING)
+        done = q.count(MessageState.DONE)
+        failed = q.count(MessageState.FAILED)
+        typer.echo(
+            f"{name:15s}  pending={pending}  processing={processing}  "
+            f"done={done}  failed={failed}"
+        )
 
 
 # --- Cards sub-commands ---

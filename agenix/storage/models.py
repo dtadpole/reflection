@@ -44,6 +44,7 @@ class Problem(BaseModel):
     problem_id: str = Field(default_factory=_ulid)
     title: str
     description: str
+    reference_code: str = ""
     test_cases: list[TestCase] = Field(default_factory=list)
     domain: str = "general"
     difficulty: Difficulty = Difficulty.MEDIUM
