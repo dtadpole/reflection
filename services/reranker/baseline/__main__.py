@@ -13,7 +13,7 @@ def main() -> None:
         "--vllm-url", default="http://localhost:42984", help="vLLM backend URL"
     )
     parser.add_argument(
-        "--model", default="Qwen/Qwen3.5-27B", help="Model name"
+        "--model", default="Qwen/Qwen3-32B", help="Model name"
     )
 
     args = parser.parse_args()

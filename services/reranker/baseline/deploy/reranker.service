@@ -1,6 +1,6 @@
 [Unit]
-Description=Reranker FastAPI server (cross-encoder via vLLM)
-After=network.target reranker-vllm.service
+Description=Reranker FastAPI server (cross-encoder via SGLang)
+After=network.target reranker-baseline.service
 
 [Service]
 Type=simple

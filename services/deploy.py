@@ -53,7 +53,7 @@ _RERANKER_FILES = [
 ]
 _RERANKER_REQUIREMENTS = "services/reranker/baseline/deploy/requirements.txt"
 _RERANKER_UNIT_NAME = "reranker"
-_RERANKER_VLLM_UNIT_NAME = "reranker-vllm"
+_RERANKER_VLLM_UNIT_NAME = "reranker-baseline"
 
 
 def _render_text_embedding_unit(port: int, model: str, dimension: int, device: str) -> str:
@@ -110,25 +110,33 @@ def _render_unit(port: int, devices: str) -> str:
     """)
 
 
-def _render_reranker_vllm_unit(
-    vllm_port: int, model: str, device: str
+def _render_reranker_backend_unit(
+    backend_port: int, model: str, device: str
 ) -> str:
-    """Render the systemd unit file for the reranker vLLM backend."""
+    """Render the systemd unit file for the reranker SGLang backend."""
     exec_start = (
-        "%h/.reflection/services/reranker/.venv/bin/vllm"
-        f" serve {model}"
-        f" --port {vllm_port}"
+        "%h/.reflection/services/reranker/.venv/bin/python"
+        f" -m sglang.launch_server"
+        f" --model-path {model}"
+        f" --port {backend_port}"
         " --dtype float16"
-        " --max-model-len 4096"
+        " --context-length 24576"
+        " --mem-fraction-static 0.80"
+        " --disable-cuda-graph"
+    )
+    env_path = (
+        "PATH=%h/.reflection/services/reranker/.venv/bin"
+        ":/usr/local/bin:/usr/bin:/bin"
     )
     return textwrap.dedent(f"""\
         [Unit]
-        Description=vLLM server for reranker ({model})
+        Description=SGLang server for reranker baseline ({model})
         After=network.target
 
         [Service]
         Type=simple
         WorkingDirectory=%h/.reflection/services/reranker
+        Environment={env_path}
         ExecStart={exec_start}
         Restart=always
         RestartSec=10
@@ -149,7 +157,7 @@ def _render_reranker_unit(port: int, vllm_port: int, model: str) -> str:
     )
     return textwrap.dedent(f"""\
         [Unit]
-        Description=Reranker FastAPI server (cross-encoder via vLLM)
+        Description=Reranker FastAPI server (cross-encoder via SGLang)
         After=network.target {_RERANKER_VLLM_UNIT_NAME}.service
 
         [Service]
@@ -601,7 +609,7 @@ class ServiceDeployer:
     # --- Reranker methods ---
 
     async def deploy_reranker(self, endpoint: ServiceEndpoint) -> bool:
-        """Deploy reranker service (vLLM + FastAPI) to a remote endpoint."""
+        """Deploy reranker service (SGLang + FastAPI) to a remote endpoint."""
         try:
             import asyncio
 
@@ -638,7 +646,7 @@ class ServiceDeployer:
                 if req_local.exists():
                     await sftp.put(str(req_local), f"{remote_base}/requirements.txt")
 
-            # Create venv and install dependencies (including vllm)
+            # Create venv and install dependencies (including sglang)
             venv_path = f"{remote_base}/.venv"
             uv_bin = f"{remote_home}/.local/bin/uv"
             venv_check = await conn.run(f"test -f {venv_path}/bin/python")
@@ -647,41 +655,37 @@ class ServiceDeployer:
                 await conn.run(f"{uv_bin} venv {venv_path}", check=True)
                 logger.info("Installing dependencies on %s ...", endpoint.name)
                 await conn.run(
-                    f"{uv_bin} pip install -p {venv_path}/bin/python "
-                    f"-r {remote_base}/requirements.txt",
-                    check=True,
-                )
-                # Install vllm separately (large package)
-                logger.info("Installing vllm on %s ...", endpoint.name)
-                await conn.run(
-                    f"{uv_bin} pip install -p {venv_path}/bin/python vllm",
+                    f"{uv_bin} pip install --prerelease=allow"
+                    f" -p {venv_path}/bin/python"
+                    f" -r {remote_base}/requirements.txt ninja",
                     check=True,
                 )
                 logger.info("Dependencies installed on %s", endpoint.name)
             else:
                 logger.info("Updating dependencies on %s ...", endpoint.name)
                 await conn.run(
-                    f"{uv_bin} pip install -q -p {venv_path}/bin/python "
-                    f"-r {remote_base}/requirements.txt",
+                    f"{uv_bin} pip install -q --prerelease=allow"
+                    f" -p {venv_path}/bin/python"
+                    f" -r {remote_base}/requirements.txt",
                 )
 
             server_cfg = self._config.reranker_server
 
-            # Write vLLM systemd unit
-            vllm_unit_content = _render_reranker_vllm_unit(
-                vllm_port=server_cfg.vllm_port,
+            # Write SGLang backend systemd unit
+            backend_unit_content = _render_reranker_backend_unit(
+                backend_port=server_cfg.vllm_port,
                 model=server_cfg.model_name,
                 device=server_cfg.device,
             )
-            vllm_unit_path = (
+            backend_unit_path = (
                 f"{remote_home}/.config/systemd/user"
                 f"/{_RERANKER_VLLM_UNIT_NAME}.service"
             )
             r = await conn.run(
-                f"cat > {vllm_unit_path} << 'UNIT_EOF'\n{vllm_unit_content}UNIT_EOF"
+                f"cat > {backend_unit_path} << 'UNIT_EOF'\n{backend_unit_content}UNIT_EOF"
             )
             if r.exit_status != 0:
-                logger.error("Failed to write vLLM unit file: %s", r.stderr)
+                logger.error("Failed to write backend unit file: %s", r.stderr)
                 conn.close()
                 return False
 
@@ -706,15 +710,15 @@ class ServiceDeployer:
             await conn.run("loginctl enable-linger $(whoami) 2>/dev/null || true")
             await conn.run("systemctl --user daemon-reload", check=True)
 
-            # Start vLLM first, then FastAPI wrapper
+            # Start SGLang backend first, then FastAPI wrapper
             await conn.run(
                 f"systemctl --user enable {_RERANKER_VLLM_UNIT_NAME}", check=True
             )
             await conn.run(
                 f"systemctl --user restart {_RERANKER_VLLM_UNIT_NAME}", check=True
             )
-            # Wait for vLLM to load the model
-            logger.info("Waiting for vLLM model to load on %s ...", endpoint.name)
+            # Wait for SGLang to load the model
+            logger.info("Waiting for SGLang model to load on %s ...", endpoint.name)
             await asyncio.sleep(30)
 
             await conn.run(

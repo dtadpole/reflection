@@ -36,15 +36,15 @@ services/
 ├── reranker/                      # Cross-encoder reranker service
 │   ├── __init__.py
 │   ├── CLAUDE.md                  # Service contract
-│   └── baseline/                  # baseline variant (Qwen3.5-27B via vLLM)
+│   └── baseline/                  # baseline variant (Qwen3-32B via SGLang)
 │       ├── __init__.py
 │       ├── __main__.py            # python -m services.reranker.baseline
 │       ├── client.py              # HTTP client
-│       ├── server.py              # FastAPI server (vLLM wrapper)
+│       ├── server.py              # FastAPI server (SGLang wrapper)
 │       └── deploy/
 │           ├── requirements.txt
 │           ├── reranker.service   # systemd unit for FastAPI
-│           └── reranker-vllm.service  # systemd unit for vLLM
+│           └── reranker-baseline.service  # systemd unit for SGLang backend
 └── ssh_tunnel/                    # SSH tunnel service (infrastructure)
     ├── __init__.py
     ├── tunnel.py                  # TunnelStatus, check_port, get_manager
@@ -57,6 +57,12 @@ When adding a new service variant:
 2. Implementation files live inside the variant directory
 3. Imports use the full path: `from services.<service_name>.<variant>.module import X`
 4. Shared models stay in `services/models.py` (not inside any variant)
+
+## Systemd Unit Naming
+
+Systemd service units follow the pattern `<service_name>-<variant>`. For example:
+- `reranker-baseline` — SGLang backend for the reranker baseline variant
+- `reranker` — FastAPI wrapper (shared across variants)
 
 ## Deployment Patterns
 
@@ -81,7 +87,7 @@ reflection services deploy <name>           # Deploy kbEval via systemd
 reflection services stop <name>             # Stop kbEval
 reflection services deploy-embedding <name> # Deploy text-embedding via systemd
 reflection services stop-embedding <name>   # Stop text-embedding
-reflection services deploy-reranker <name>  # Deploy reranker (vLLM + FastAPI) via systemd
+reflection services deploy-reranker <name>  # Deploy reranker (SGLang + FastAPI) via systemd
 reflection services stop-reranker <name>    # Stop reranker
 reflection services status                  # Health-check all endpoints
 reflection services health <name>           # Detailed health (all services) + systemd status

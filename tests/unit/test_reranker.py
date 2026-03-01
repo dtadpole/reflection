@@ -23,8 +23,8 @@ class TestRerankResult:
         assert r.model == ""
 
     def test_with_model(self):
-        r = RerankResult(scores=[0.5], model="Qwen/Qwen3.5-27B")
-        assert r.model == "Qwen/Qwen3.5-27B"
+        r = RerankResult(scores=[0.5], model="Qwen/Qwen3-32B")
+        assert r.model == "Qwen/Qwen3-32B"
 
     def test_empty_scores(self):
         r = RerankResult(scores=[])
@@ -128,7 +128,13 @@ class TestBuildPrompt:
         prompt = _build_prompt("inst", "q", "d")
         assert prompt.startswith("<|im_start|>system")
         assert "<|im_end|>" in prompt
-        assert prompt.endswith("<|im_start|>assistant\n")
+        assert "<|im_start|>assistant\n" in prompt
+
+    def test_thinking_bypass(self):
+        """Prompt includes think tags to bypass Qwen3 thinking mode."""
+        prompt = _build_prompt("inst", "q", "d")
+        assert "<think>\n\n</think>\n" in prompt
+        assert prompt.endswith("<think>\n\n</think>\n")
 
     def test_yes_no_instruction_in_system(self):
         prompt = _build_prompt("inst", "q", "d")
@@ -145,7 +151,7 @@ class TestRerankerServerConfig:
         assert cfg.host == "0.0.0.0"
         assert cfg.port == 42983
         assert cfg.vllm_port == 42984
-        assert cfg.model_name == "Qwen/Qwen3.5-27B"
+        assert cfg.model_name == "Qwen/Qwen3-32B"
         assert cfg.device == "cuda:0"
 
 
@@ -196,7 +202,7 @@ class TestRerankerClientHealth:
             "name": "reranker",
             "status": "running",
             "endpoint": "http://0.0.0.0:42983",
-            "devices": ["vllm:ok"],
+            "devices": ["sglang:ok"],
             "pending_requests": 0,
             "checked_at": "2026-01-01T00:00:00Z",
         }
@@ -215,7 +221,7 @@ class TestRerankerClientHealth:
             result = await client.health()
 
         assert result.status == ServiceStatus.RUNNING
-        assert result.devices == ["vllm:ok"]
+        assert result.devices == ["sglang:ok"]
 
 
 class TestRerankerClientRetry:
@@ -235,7 +241,7 @@ class TestRerankerClientRank:
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "scores": [0.95, 0.02],
-            "model": "Qwen/Qwen3.5-27B",
+            "model": "Qwen/Qwen3-32B",
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -256,7 +262,7 @@ class TestRerankerClientRank:
 
         assert isinstance(result, RerankResult)
         assert result.scores == [0.95, 0.02]
-        assert result.model == "Qwen/Qwen3.5-27B"
+        assert result.model == "Qwen/Qwen3-32B"
 
     @pytest.mark.asyncio
     async def test_rank_with_instruction(self):

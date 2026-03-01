@@ -1,0 +1,14 @@
+[Unit]
+Description=SGLang server for reranker baseline (Qwen/Qwen3-32B)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.reflection/services/reranker
+Environment=PATH=%h/.reflection/services/reranker/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.reflection/services/reranker/.venv/bin/python -m sglang.launch_server --model-path Qwen/Qwen3-32B --port 42984 --dtype float16 --context-length 24576 --mem-fraction-static 0.80 --disable-cuda-graph
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -12,7 +12,7 @@ Tests are organized in four layers:
 3. **Text embedding service** (_two) — health endpoint, embedding round-trips,
    batch processing, dimension validation.
 
-4. **Reranker service** (_two) — health endpoint, vLLM backend status, relevance
+4. **Reranker service** (_two) — health endpoint, SGLang backend status, relevance
    scoring with yes/no logit extraction.
 
 Requires:
@@ -428,11 +428,11 @@ class TestRerankerSystemd:
     """Verify reranker systemd deployment on _two."""
 
     @pytest.mark.asyncio
-    async def test_vllm_unit_exists(self, deployer, endpoint_two):
-        """systemd should know about the reranker-vllm unit."""
+    async def test_backend_unit_exists(self, deployer, endpoint_two):
+        """systemd should know about the reranker-baseline unit."""
         status_output = await deployer.systemd_status_reranker(endpoint_two)
-        assert "reranker-vllm" in status_output, (
-            f"reranker-vllm unit not found: {status_output}"
+        assert "reranker-baseline" in status_output, (
+            f"reranker-baseline unit not found: {status_output}"
         )
 
     @pytest.mark.asyncio
@@ -450,7 +450,7 @@ class TestRerankerSystemd:
         assert len(logs) > 0, "No logs returned"
         assert "Failed to fetch" not in logs, f"Log fetch failed: {logs}"
         assert "--- reranker ---" in logs
-        assert "--- reranker-vllm ---" in logs
+        assert "--- reranker-baseline ---" in logs
 
 
 class TestRerankerHealth:
@@ -465,19 +465,19 @@ class TestRerankerHealth:
         assert health.status == ServiceStatus.RUNNING
 
     @pytest.mark.asyncio
-    async def test_health_vllm_backend(self, reranker_client):
-        """Health should report vLLM backend status."""
+    async def test_health_sglang_backend(self, reranker_client):
+        """Health should report SGLang backend status."""
         if not await _reranker_reachable(reranker_client):
             pytest.skip("reranker not reachable")
         health = await reranker_client.health()
-        assert len(health.devices) > 0, "No vLLM status reported"
-        assert "vllm:ok" in health.devices, (
-            f"vLLM backend not healthy: {health.devices}"
+        assert len(health.devices) > 0, "No SGLang status reported"
+        assert "sglang:ok" in health.devices, (
+            f"SGLang backend not healthy: {health.devices}"
         )
 
 
 class TestRerankerRank:
-    """Test reranker relevance scoring with live vLLM backend."""
+    """Test reranker relevance scoring with live SGLang backend."""
 
     @pytest.mark.asyncio
     async def test_rank_relevant_vs_irrelevant(self, reranker_client):

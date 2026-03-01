@@ -105,7 +105,7 @@ class RerankerServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 42983
     vllm_port: int = 42984
-    model_name: str = "Qwen/Qwen3.5-27B"
+    model_name: str = "Qwen/Qwen3-32B"
     device: str = "cuda:0"
 
 

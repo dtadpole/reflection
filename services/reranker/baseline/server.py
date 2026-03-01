@@ -1,7 +1,8 @@
-"""FastAPI server for cross-encoder reranking via vLLM.
+"""FastAPI server for cross-encoder reranking via SGLang.
 
-Uses the yes/no logit trick: prompt vLLM with "(query, document) -> relevant?"
+Uses the yes/no logit trick: prompt the LLM backend with "(query, document) -> relevant?"
 and extract P(yes) / (P(yes) + P(no)) as the relevance score.
+Backend is SGLang serving Qwen3-32B with an OpenAI-compatible API on port 42984.
 
 Run with: uvicorn services.reranker.baseline.server:app --host 0.0.0.0 --port 42983
 """
@@ -23,7 +24,7 @@ app = FastAPI(title="reranker", version="1.0.0")
 
 # Server state
 _vllm_url: str = "http://localhost:42984"
-_model_name: str = "Qwen/Qwen3.5-27B"
+_model_name: str = "Qwen/Qwen3-32B"
 _port: int = 42983
 
 _DEFAULT_INSTRUCTION = "Given the query, determine if the document is relevant."
@@ -37,7 +38,11 @@ class RankRequest(BaseModel):
 
 
 def _build_prompt(instruction: str, query: str, document: str) -> str:
-    """Build the yes/no relevance prompt using ChatML format."""
+    """Build the yes/no relevance prompt using ChatML format.
+
+    Includes ``<think>\\n\\n</think>\\n`` after the assistant header to bypass
+    Qwen3's default thinking mode and force an immediate yes/no answer.
+    """
     return (
         "<|im_start|>system\n"
         "Judge whether the Document is relevant to the Query and Instruction.\n"
@@ -47,6 +52,7 @@ def _build_prompt(instruction: str, query: str, document: str) -> str:
         f"<Query>: {query}\n"
         f"<Document>: {document}<|im_end|>\n"
         "<|im_start|>assistant\n"
+        "<think>\n\n</think>\n"
     )
 
 
@@ -124,17 +130,17 @@ async def rank(req: RankRequest) -> RerankResult:
 @app.get("/health", response_model=ServiceHealth)
 async def health() -> ServiceHealth:
     """Health check endpoint."""
-    # Also check if vLLM backend is reachable
+    # Also check if SGLang backend is reachable
     devices: list[str] = []
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{_vllm_url}/health")
             if resp.status_code == 200:
-                devices.append("vllm:ok")
+                devices.append("sglang:ok")
             else:
-                devices.append("vllm:error")
+                devices.append("sglang:error")
     except Exception:
-        devices.append("vllm:unreachable")
+        devices.append("sglang:unreachable")
 
     return ServiceHealth(
         name="reranker",
@@ -146,7 +152,7 @@ async def health() -> ServiceHealth:
 
 def configure(
     vllm_url: str = "http://localhost:42984",
-    model_name: str = "Qwen/Qwen3.5-27B",
+    model_name: str = "Qwen/Qwen3-32B",
     port: int = 42983,
 ) -> None:
     """Configure server settings (call before starting uvicorn)."""
