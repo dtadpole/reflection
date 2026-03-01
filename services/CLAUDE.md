@@ -108,6 +108,8 @@ Once tunnels are running, all HTTP access (health checks, tests, eval) goes thro
 
 ## Testing
 
+**Rules:** When adding a new service, always write both unit tests (`tests/unit/`) and integration tests (`tests/integration/test_services.py`) that test against the actual live deployment.
+
 Integration tests live in `tests/integration/test_services.py`. Run with `make test-service`.
 
 Tests are organized in two layers:

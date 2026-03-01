@@ -1,6 +1,6 @@
 """Integration test: remote service deployment, health, and functionality.
 
-Tests are organized in three layers:
+Tests are organized in four layers:
 
 1. **Service infrastructure** — SSH connectivity, systemd unit management, log access.
    These tests verify the deployment machinery works regardless of which service
@@ -12,10 +12,14 @@ Tests are organized in three layers:
 3. **Text embedding service** (_two) — health endpoint, embedding round-trips,
    batch processing, dimension validation.
 
+4. **Reranker service** (_two) — health endpoint, vLLM backend status, relevance
+   scoring with yes/no logit extraction.
+
 Requires:
 - SSH access to _one (centos@1and1:41922) and _two (centos@1and1:42922)
 - kbEval deployed and running on _one
 - text-embedding deployed and running on _two
+- reranker deployed and running on _two
 - SSH tunnels running: reflection services tunnel start
 
 Run with:
@@ -33,6 +37,7 @@ from services.deploy import ServiceDeployer
 from services.health import HealthChecker
 from services.kb_eval.baseline.client import KbEvalClient
 from services.models import ServiceStatus
+from services.reranker.baseline.client import RerankerClient
 from services.text_embedding.baseline.client import TextEmbeddingClient
 
 # ---------------------------------------------------------------------------
@@ -89,6 +94,21 @@ def endpoint_two(config) -> ServiceEndpoint:
 def te_client(endpoint_two) -> TextEmbeddingClient:
     """TextEmbeddingClient using endpoint config (base_url via tunnel)."""
     return TextEmbeddingClient(endpoint_two.text_embedding)
+
+
+@pytest.fixture(scope="module")
+def reranker_client(endpoint_two) -> RerankerClient:
+    """RerankerClient using endpoint config (base_url via tunnel)."""
+    return RerankerClient(endpoint_two.reranker)
+
+
+async def _reranker_reachable(rr_client: RerankerClient) -> bool:
+    """Check if reranker is reachable (expects SSH tunnel running)."""
+    try:
+        health = await rr_client.health()
+        return health.status == ServiceStatus.RUNNING
+    except Exception:
+        return False
 
 
 async def _embedding_reachable(te_client: TextEmbeddingClient) -> bool:
@@ -397,3 +417,154 @@ class TestTextEmbeddingEmbed:
         )
         assert len(result.embeddings) == 1
         assert len(result.embeddings[0]) == 4096
+
+
+# ===========================================================================
+# 4. Reranker service (_two)
+# ===========================================================================
+
+
+class TestRerankerSystemd:
+    """Verify reranker systemd deployment on _two."""
+
+    @pytest.mark.asyncio
+    async def test_vllm_unit_exists(self, deployer, endpoint_two):
+        """systemd should know about the reranker-vllm unit."""
+        status_output = await deployer.systemd_status_reranker(endpoint_two)
+        assert "reranker-vllm" in status_output, (
+            f"reranker-vllm unit not found: {status_output}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_api_unit_exists(self, deployer, endpoint_two):
+        """systemd should know about the reranker unit."""
+        status_output = await deployer.systemd_status_reranker(endpoint_two)
+        assert "reranker" in status_output, (
+            f"reranker unit not found: {status_output}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_logs_available(self, deployer, endpoint_two):
+        """Journal logs should be fetchable for both units."""
+        logs = await deployer.logs_reranker(endpoint_two, lines=10)
+        assert len(logs) > 0, "No logs returned"
+        assert "Failed to fetch" not in logs, f"Log fetch failed: {logs}"
+        assert "--- reranker ---" in logs
+        assert "--- reranker-vllm ---" in logs
+
+
+class TestRerankerHealth:
+    """Test reranker health endpoint via SSH tunnel."""
+
+    @pytest.mark.asyncio
+    async def test_health_running(self, reranker_client):
+        """Health endpoint should return running status."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable (check SSH tunnel)")
+        health = await reranker_client.health()
+        assert health.status == ServiceStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_health_vllm_backend(self, reranker_client):
+        """Health should report vLLM backend status."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable")
+        health = await reranker_client.health()
+        assert len(health.devices) > 0, "No vLLM status reported"
+        assert "vllm:ok" in health.devices, (
+            f"vLLM backend not healthy: {health.devices}"
+        )
+
+
+class TestRerankerRank:
+    """Test reranker relevance scoring with live vLLM backend."""
+
+    @pytest.mark.asyncio
+    async def test_rank_relevant_vs_irrelevant(self, reranker_client):
+        """Relevant document should score higher than irrelevant one."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable")
+        result = await reranker_client.rank(
+            query="optimize matrix multiply",
+            documents=[
+                "Use tiling to improve cache locality in matrix multiplication",
+                "Hello world is a basic introductory program",
+            ],
+        )
+        assert len(result.scores) == 2
+        assert result.model != ""
+        # The relevant document (tiling) should score higher than hello world
+        assert result.scores[0] > result.scores[1], (
+            f"Relevant doc should score higher: {result.scores}"
+        )
+        # Relevant doc should have a clearly high score
+        assert result.scores[0] > 0.5, (
+            f"Relevant doc score too low: {result.scores[0]}"
+        )
+        # Irrelevant doc should have a clearly low score
+        assert result.scores[1] < 0.5, (
+            f"Irrelevant doc score too high: {result.scores[1]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rank_multiple_documents(self, reranker_client):
+        """Ranking multiple documents should return one score per document."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable")
+        documents = [
+            "Shared memory tiling reduces global memory access in CUDA kernels",
+            "Python is a popular programming language for web development",
+            "Loop unrolling can improve instruction-level parallelism on GPUs",
+            "The weather forecast for tomorrow shows sunny skies",
+        ]
+        result = await reranker_client.rank(
+            query="GPU kernel optimization techniques",
+            documents=documents,
+        )
+        assert len(result.scores) == 4
+        # GPU-related docs (indices 0, 2) should score higher than unrelated (1, 3)
+        gpu_scores = [result.scores[0], result.scores[2]]
+        other_scores = [result.scores[1], result.scores[3]]
+        assert min(gpu_scores) > max(other_scores), (
+            f"GPU docs should all rank above unrelated docs: {result.scores}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rank_scores_in_range(self, reranker_client):
+        """All scores should be between 0 and 1."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable")
+        result = await reranker_client.rank(
+            query="triton kernel",
+            documents=["triton autotuning", "cooking recipe"],
+        )
+        for score in result.scores:
+            assert 0.0 <= score <= 1.0, f"Score out of range: {score}"
+
+    @pytest.mark.asyncio
+    async def test_rank_empty_documents(self, reranker_client):
+        """Empty document list should return empty scores."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable")
+        result = await reranker_client.rank(
+            query="anything",
+            documents=[],
+        )
+        assert result.scores == []
+
+    @pytest.mark.asyncio
+    async def test_rank_with_custom_instruction(self, reranker_client):
+        """Custom instruction should influence scoring."""
+        if not await _reranker_reachable(reranker_client):
+            pytest.skip("reranker not reachable")
+        result = await reranker_client.rank(
+            query="memory coalescing",
+            documents=[
+                "Coalesced memory access patterns improve GPU bandwidth utilization",
+            ],
+            instruction="Given a GPU programming concept, judge if the document explains it.",
+        )
+        assert len(result.scores) == 1
+        assert result.scores[0] > 0.5, (
+            f"Highly relevant doc should score > 0.5: {result.scores[0]}"
+        )

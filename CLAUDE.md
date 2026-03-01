@@ -24,6 +24,10 @@ uv run ruff check .                        # Lint
 uv run ruff check . --fix                  # Auto-fix lint issues
 ```
 
+**Testing rules:**
+- Always write **unit tests** when adding new services, tools, or other new components
+- Always write **integration tests** for services and tools (test against actual live deployment)
+
 ## Project Structure
 
 - `agenix/` — Agent execution framework (Claude Agent SDK runtime, orchestration, tools, storage)
