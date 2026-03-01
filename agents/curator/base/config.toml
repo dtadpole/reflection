@@ -1,5 +1,0 @@
-model = "sonnet"
-temperature = 0.8
-max_turns = 5
-tools = []
-custom_tools = []

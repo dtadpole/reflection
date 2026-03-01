@@ -1,0 +1,5 @@
+model: sonnet
+temperature: 0.5
+max_turns: 10
+tools: []
+custom_tools: []

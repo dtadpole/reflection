@@ -212,7 +212,7 @@ class IterationResult(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Configuration loaded from an agent's config.toml."""
+    """Configuration loaded from an agent's config.yaml."""
 
     model: str = "sonnet"
     temperature: float = 0.7

@@ -1,0 +1,6 @@
+model: sonnet
+temperature: 0.4
+max_turns: 10
+tools: []
+custom_tools:
+  - knowledge_retriever

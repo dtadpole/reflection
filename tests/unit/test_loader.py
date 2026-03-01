@@ -113,7 +113,7 @@ class TestLoadAgent:
         agents_dir = tmp_path / "agents"
         variant_dir = agents_dir / "bad_agent" / "base"
         variant_dir.mkdir(parents=True)
-        (variant_dir / "config.toml").write_text('model = "haiku"')
+        (variant_dir / "config.yaml").write_text("model: haiku\n")
         with pytest.raises(FileNotFoundError):
             load_agent("bad_agent", agents_dir=agents_dir)
 

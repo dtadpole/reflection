@@ -9,10 +9,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Optional
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
+import yaml
 
 from agenix.storage.models import AgentConfig, LoadedAgent
 
@@ -58,9 +55,9 @@ def parse_agent_md(text: str) -> dict[str, str]:
 
 
 def load_agent_config(config_path: Path) -> AgentConfig:
-    """Load agent configuration from a TOML file."""
-    with open(config_path, "rb") as f:
-        raw = tomllib.load(f)
+    """Load agent configuration from a YAML file."""
+    with open(config_path) as f:
+        raw = yaml.safe_load(f) or {}
     return AgentConfig.model_validate(raw)
 
 
@@ -87,7 +84,7 @@ def load_agent(
 
     Reads:
     - agent.md → description, system_prompt, input_format, output_format, examples
-    - config.toml → model, temperature, max_turns, tools, custom_tools
+    - config.yaml → model, temperature, max_turns, tools, custom_tools
     - logic.py → optional Python module path (loaded on demand)
     """
     if agents_dir is None:
@@ -104,8 +101,8 @@ def load_agent(
 
     sections = parse_agent_md(agent_md_path.read_text())
 
-    # Load config.toml
-    config_path = variant_dir / "config.toml"
+    # Load config.yaml
+    config_path = variant_dir / "config.yaml"
     config = load_agent_config(config_path) if config_path.exists() else AgentConfig()
 
     # Check for logic.py

@@ -41,14 +41,10 @@ Output: {"result": "world"}
 """
     )
 
-    # config.toml
-    (variant_dir / "config.toml").write_text(
-        """model = "haiku"
-temperature = 0.5
-max_turns = 3
-tools = ["Read"]
-custom_tools = ["code_executor"]
-"""
+    # config.yaml
+    (variant_dir / "config.yaml").write_text(
+        "model: haiku\ntemperature: 0.5\nmax_turns: 3\n"
+        "tools:\n  - Read\ncustom_tools:\n  - code_executor\n"
     )
 
     # logic.py

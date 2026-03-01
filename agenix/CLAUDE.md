@@ -6,7 +6,7 @@ Generic framework that uses `claude-agent-sdk` to execute agents defined in `age
 
 `loader.py` reads agent folders:
 - `agent.md` → parsed into system prompt, description, I/O format
-- `config.yaml` → model, temperature, max_turns, tools, custom_tools
+- `config.yaml` → model, temperature, max_turns, tools, custom_tools (agents + tools)
 - `logic.py` → optional Python module with hardened logic (imported dynamically)
 
 ## Custom Tools (MCP Server Pattern)

@@ -1,5 +1,0 @@
-model = "sonnet"
-temperature = 0.6
-max_turns = 10
-tools = []
-custom_tools = ["knowledge_retriever"]
