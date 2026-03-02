@@ -124,23 +124,26 @@ class ParallelSolverHandler:
 
     def _run_one(self, problem_id: str, input_payload: str, index: int) -> str | None:
         """Run a single solver instance. Returns experience_id or None."""
+        label = f"solver#{index + 1}"
         try:
             runner = self._runner_factory()
             agent = load_agent("solver")
-            logger.info("Solver instance %d starting for %s", index, problem_id)
+            # Tag the agent name so all runner logs show the instance number
+            agent.name = label
+            logger.info("[%s] starting for %s", label, problem_id)
             result = runner.run(agent, input_payload)
 
             if result.experience_id:
                 logger.info(
-                    "Solver instance %d succeeded: experience=%s",
-                    index, result.experience_id,
+                    "[%s] succeeded: experience=%s",
+                    label, result.experience_id,
                 )
                 return result.experience_id
 
-            logger.warning("Solver instance %d produced no experience", index)
+            logger.warning("[%s] produced no experience", label)
             return None
         except Exception:
-            logger.exception("Solver instance %d failed", index)
+            logger.exception("[%s] failed", label)
             return None
 
     def _run_parallel(self, problem_id: str, input_payload: str) -> list[str]:
