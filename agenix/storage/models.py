@@ -152,6 +152,7 @@ class Card(BaseModel):
     title: str
     content: str
     code_snippet: str = ""
+    experience_ids: list[str] = Field(default_factory=list, max_length=3)
     tags: list[str] = Field(default_factory=list)
     source_ids: list[str] = Field(default_factory=list)
     version: int = 1
@@ -191,7 +192,6 @@ class InsightCard(Card):
 
 class ReflectionCard(Card):
     card_type: CardType = CardType.REFLECTION
-    experience_id: str
     category: ReflectionCategory = ReflectionCategory.GENERAL
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     supporting_steps: list[int] = Field(default_factory=list)

@@ -173,7 +173,7 @@ SAMPLE_CARDS = [
             "drops the remainder block, silently producing wrong results "
             "on inputs not divisible by BLOCK_SIZE."
         ),
-        experience_id="exp-001",
+        experience_ids=["exp-001"],
         category=ReflectionCategory.DEBUGGING,
         confidence=0.95,
         tags=["triton", "grid", "off-by-one"],

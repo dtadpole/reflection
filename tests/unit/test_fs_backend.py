@@ -182,7 +182,7 @@ class TestReflectionCardCRUD:
         r = ReflectionCard(
             title="Memoization Insight",
             content="Fibonacci can be solved with memoization",
-            experience_id=sample_experience.experience_id,
+            experience_ids=[sample_experience.experience_id],
             category=ReflectionCategory.ALGORITHM,
             confidence=0.9,
             supporting_steps=[0, 1],
@@ -192,14 +192,14 @@ class TestReflectionCardCRUD:
         assert loaded is not None
         assert isinstance(loaded, ReflectionCard)
         assert loaded.content == "Fibonacci can be solved with memoization"
-        assert loaded.experience_id == sample_experience.experience_id
+        assert loaded.experience_ids == [sample_experience.experience_id]
         assert loaded.category == ReflectionCategory.ALGORITHM
 
     def test_list_by_type(self, backend, sample_knowledge_card, sample_experience):
         r = ReflectionCard(
             title="Reflection",
             content="Content",
-            experience_id=sample_experience.experience_id,
+            experience_ids=[sample_experience.experience_id],
         )
         backend.save_card(sample_knowledge_card)
         backend.save_card(r)
@@ -211,12 +211,12 @@ class TestReflectionCardCRUD:
         r1 = ReflectionCard(
             title="R1",
             content="C1",
-            experience_id=sample_experience.experience_id,
+            experience_ids=[sample_experience.experience_id],
         )
         r2 = ReflectionCard(
             title="R2",
             content="C2",
-            experience_id="other-exp",
+            experience_ids=["other-exp"],
         )
         backend.save_card(r1)
         backend.save_card(r2)

@@ -230,7 +230,7 @@ class TestCreate:
             content="Using shared memory tiles for matrix multiply reduces "
             "global memory access by factor of tile_size.",
             tags=["gpu", "shared_memory", "tiling"],
-            experience_id="exp-002",
+            experience_ids=["exp-002"],
             category=ReflectionCategory.OPTIMIZATION,
             confidence=0.85,
             supporting_steps=[3, 5, 7],

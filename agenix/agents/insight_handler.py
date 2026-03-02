@@ -62,7 +62,8 @@ class InsightHandler:
 
         agent = load_agent("insight_finder")
         result = self._runner.run(agent, input_payload)
-        cards = parse_insight_cards(result.output)
+        exp_ids = [e.experience_id for e in recent[:3]]
+        cards = parse_insight_cards(result.output, experience_ids=exp_ids)
 
         for card in cards:
             source_refs = [

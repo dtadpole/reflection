@@ -121,7 +121,7 @@ def parse_experience(
 
 
 def parse_reflection_cards(
-    output: str, experience_id: str
+    output: str, experience_ids: list[str],
 ) -> list[ReflectionCard]:
     """Parse critic output into ReflectionCards."""
     data = extract_json(output)
@@ -135,7 +135,7 @@ def parse_reflection_cards(
             title=rc["title"],
             content=rc["content"],
             code_snippet=rc.get("code_snippet", ""),
-            experience_id=experience_id,
+            experience_ids=experience_ids[:3],
             category=category,
             confidence=rc.get("confidence", 0.5),
             tags=rc.get("tags", []),
@@ -144,7 +144,9 @@ def parse_reflection_cards(
     return cards
 
 
-def parse_knowledge_actions(output: str) -> list[KnowledgeCard]:
+def parse_knowledge_actions(
+    output: str, experience_ids: list[str] | None = None,
+) -> list[KnowledgeCard]:
     """Parse organizer output into KnowledgeCards (create actions only for now)."""
     data = extract_json(output)
     cards = []
@@ -155,6 +157,7 @@ def parse_knowledge_actions(output: str) -> list[KnowledgeCard]:
             title=action["title"],
             content=action["content"],
             code_snippet=action.get("code_snippet", ""),
+            experience_ids=(experience_ids or [])[:3],
             domain=action.get("domain", "general"),
             applicability=action.get("applicability", ""),
             limitations=action.get("limitations", ""),
@@ -164,7 +167,9 @@ def parse_knowledge_actions(output: str) -> list[KnowledgeCard]:
     return cards
 
 
-def parse_insight_cards(output: str) -> list[InsightCard]:
+def parse_insight_cards(
+    output: str, experience_ids: list[str] | None = None,
+) -> list[InsightCard]:
     """Parse insight finder output into InsightCards."""
     data = extract_json(output)
     cards = []
@@ -173,6 +178,7 @@ def parse_insight_cards(output: str) -> list[InsightCard]:
             title=ic["title"],
             content=ic["content"],
             code_snippet=ic.get("code_snippet", ""),
+            experience_ids=(experience_ids or [])[:3],
             hypothesis=ic.get("hypothesis", ""),
             evidence_for=ic.get("evidence_for", []),
             evidence_against=ic.get("evidence_against", []),

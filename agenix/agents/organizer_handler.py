@@ -67,7 +67,8 @@ class OrganizerHandler:
 
         agent = load_agent("organizer")
         result = self._runner.run(agent, input_payload)
-        cards = parse_knowledge_actions(result.output)
+        exp_ids = [e.experience_id for e in recent[:3]]
+        cards = parse_knowledge_actions(result.output, experience_ids=exp_ids)
 
         for card in cards:
             source_refs = [

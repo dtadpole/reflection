@@ -192,7 +192,7 @@ class Pipeline:
         })
 
         result = self._runner.run(agent, input_payload)
-        cards = parse_reflection_cards(result.output, experience.experience_id)
+        cards = parse_reflection_cards(result.output, [experience.experience_id])
 
         for card in cards:
             source_refs = [

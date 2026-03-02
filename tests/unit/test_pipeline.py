@@ -186,11 +186,11 @@ class TestParseExperience:
 
 class TestParseReflectionCards:
     def test_basic(self):
-        cards = parse_reflection_cards(CRITIC_OUTPUT, "exp_123")
+        cards = parse_reflection_cards(CRITIC_OUTPUT, ["exp_123"])
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "Python slicing for reversal"
-        assert card.experience_id == "exp_123"
+        assert card.experience_ids == ["exp_123"]
         assert card.category == ReflectionCategory.PATTERN
         assert card.confidence == 0.9
         assert card.supporting_steps == [0]
@@ -203,7 +203,7 @@ class TestParseReflectionCards:
                 "category": "nonexistent",
             }],
         })
-        cards = parse_reflection_cards(output, "exp_1")
+        cards = parse_reflection_cards(output, ["exp_1"])
         assert cards[0].category == ReflectionCategory.GENERAL
 
 
@@ -307,7 +307,7 @@ class TestPipelineCritic:
 
         cards = pipeline._run_critic("run_test", problem, exp)
         assert len(cards) == 1
-        assert cards[0].experience_id == exp.experience_id
+        assert exp.experience_id in cards[0].experience_ids
 
 
 class TestIterationResult:

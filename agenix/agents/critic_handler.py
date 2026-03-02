@@ -56,7 +56,7 @@ class CriticHandler:
 
         agent = load_agent("critic")
         result = self._runner.run(agent, input_payload)
-        cards = parse_reflection_cards(result.output, experience_id)
+        cards = parse_reflection_cards(result.output, [experience_id])
 
         for card in cards:
             source_refs = [

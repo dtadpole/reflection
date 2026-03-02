@@ -198,14 +198,12 @@ class FSBackend:
         experience_id: str,
         status: Optional[CardStatus] = CardStatus.ACTIVE,
         limit: int = 100,
-    ) -> list[ReflectionCard]:
-        """List reflection cards for a given experience."""
-        cards = self.list_cards(
-            card_type=CardType.REFLECTION, status=status, limit=limit
-        )
+    ) -> list[Card]:
+        """List cards referencing a given experience (any card type)."""
+        cards = self.list_cards(status=status, limit=limit)
         return [
             c for c in cards
-            if isinstance(c, ReflectionCard) and c.experience_id == experience_id
+            if experience_id in c.experience_ids
         ]
 
     def find_cards_by_source(

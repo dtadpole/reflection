@@ -154,10 +154,10 @@ class TestParseReflectionCards:
                 }
             ]
         })
-        cards = parse_reflection_cards(output, "exp_1")
+        cards = parse_reflection_cards(output, ["exp_1"])
         assert len(cards) == 1
         assert cards[0].title == "Good pattern"
-        assert cards[0].experience_id == "exp_1"
+        assert cards[0].experience_ids == ["exp_1"]
         assert cards[0].category == ReflectionCategory.OPTIMIZATION
         assert cards[0].confidence == 0.9
 
@@ -174,7 +174,7 @@ class TestParseReflectionCards:
                 }
             ]
         })
-        cards = parse_reflection_cards(output, "exp_1")
+        cards = parse_reflection_cards(output, ["exp_1"])
         assert cards[0].category == ReflectionCategory.GENERAL
 
 

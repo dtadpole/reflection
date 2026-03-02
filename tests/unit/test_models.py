@@ -161,7 +161,7 @@ class TestReflectionCard:
         r = ReflectionCard(
             title="DP Reflection",
             content="Dynamic programming works by breaking problems into subproblems",
-            experience_id="e1",
+            experience_ids=["e1"],
             category=ReflectionCategory.ALGORITHM,
             confidence=0.8,
             supporting_steps=[0, 2, 4],
@@ -170,7 +170,7 @@ class TestReflectionCard:
         assert r.category == ReflectionCategory.ALGORITHM
         assert r.confidence == 0.8
         assert len(r.supporting_steps) == 3
-        assert r.experience_id == "e1"
+        assert r.experience_ids == ["e1"]
         assert r.card_id  # inherited from Card
         assert r.version == 1
 
@@ -181,7 +181,7 @@ class TestReflectionCard:
             ReflectionCard(
                 title="Test",
                 content="test",
-                experience_id="e1",
+                experience_ids=["e1"],
                 confidence=1.5,
             )
 
@@ -189,7 +189,7 @@ class TestReflectionCard:
         r = ReflectionCard(
             title="Test",
             content="Content",
-            experience_id="e1",
+            experience_ids=["e1"],
             tags=["dp"],
         )
         assert r.status == CardStatus.ACTIVE
@@ -201,7 +201,7 @@ class TestReflectionCard:
         r = ReflectionCard(
             title="Test",
             content="Content",
-            experience_id="e1",
+            experience_ids=["e1"],
             category=ReflectionCategory.PATTERN,
             confidence=0.9,
             supporting_steps=[1, 3],
@@ -209,7 +209,7 @@ class TestReflectionCard:
         json_str = r.model_dump_json()
         r2 = ReflectionCard.model_validate_json(json_str)
         assert r2.card_type == CardType.REFLECTION
-        assert r2.experience_id == "e1"
+        assert r2.experience_ids == ["e1"]
         assert r2.category == ReflectionCategory.PATTERN
         assert r2.confidence == 0.9
 

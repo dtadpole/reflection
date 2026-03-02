@@ -108,9 +108,11 @@ def _log_verifier_result(agent_name: str, turn: int, block: Any, problem_title: 
     correct = data.get("correctness", False)
     runtime = data.get("runtime", -1.0)
     stats = data.get("runtime_stats", {})
-    # runtime_stats has nested structure: {"generated": {"mean_ms": ...}, "reference": {"mean_ms": ...}}
-    gen_ms = stats.get("generated", {}).get("mean_ms") if isinstance(stats.get("generated"), dict) else stats.get("generated_ms")
-    ref_ms = stats.get("reference", {}).get("mean_ms") if isinstance(stats.get("reference"), dict) else stats.get("reference_ms")
+    # runtime_stats: nested {"generated": {"mean_ms": ...}} or flat {"generated_ms": ...}
+    gen_stats = stats.get("generated")
+    ref_stats = stats.get("reference")
+    gen_ms = gen_stats.get("mean_ms") if isinstance(gen_stats, dict) else stats.get("generated_ms")
+    ref_ms = ref_stats.get("mean_ms") if isinstance(ref_stats, dict) else stats.get("reference_ms")
     # Fallback to top-level runtime if generated_ms not available
     if gen_ms is None and runtime > 0:
         gen_ms = runtime
