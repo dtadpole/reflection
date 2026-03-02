@@ -124,7 +124,10 @@ class ParallelSolverHandler:
 
     def _run_one(self, problem_id: str, input_payload: str, index: int) -> str | None:
         """Run a single solver instance. Returns experience_id or None."""
+        import threading
+
         label = f"solver#{index + 1}"
+        threading.current_thread().name = label
         try:
             runner = self._runner_factory()
             agent = load_agent("solver")
