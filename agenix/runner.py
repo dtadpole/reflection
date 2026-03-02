@@ -195,6 +195,7 @@ class ClaudeRunner:
 
         result_message: ResultMessage | None = None
         turn = 0
+        max_turns = options.max_turns or 0
         tool_names: dict[str, str] = {}  # tool_use_id → tool_name
         async for message in query(prompt=input_payload, options=options):
             if isinstance(message, AssistantMessage):
@@ -202,6 +203,13 @@ class ClaudeRunner:
                 self._log_assistant_message(agent.name, turn, message)
                 self._track_tool_names(message, tool_names)
                 conv.log_assistant(message)
+                # Enforce max_turns based on assistant message count
+                if max_turns and turn >= max_turns:
+                    logger.info(
+                        "[%s] Reached max_turns=%d, stopping agent.",
+                        agent.name, max_turns,
+                    )
+                    break
             elif isinstance(message, UserMessage):
                 self._log_user_message(agent.name, turn, message, tool_names)
                 conv.log_user(message)
@@ -218,32 +226,41 @@ class ClaudeRunner:
                     "[%s] unknown message type: %s", agent.name, type(message).__name__,
                 )
 
-        if result_message is None:
-            raise RuntimeError(f"Agent {agent.name} returned no result")
+        if result_message is not None:
+            conv.log_result(result_message)
 
-        conv.log_result(result_message)
+            if result_message.is_error:
+                raise RuntimeError(
+                    f"Agent {agent.name} returned an error: {result_message.result}"
+                )
 
-        if result_message.is_error:
-            raise RuntimeError(
-                f"Agent {agent.name} returned an error: {result_message.result}"
+            usage = result_message.usage or {}
+            result = AgentResult(
+                output=result_message.result or "",
+                duration_ms=result_message.duration_ms,
+                num_turns=turn,
+                cost_usd=result_message.total_cost_usd or 0.0,
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                conversation_path=conv.path,
+                experience_id=experience_id,
+            )
+        else:
+            # Stopped early (max_turns reached) — no ResultMessage from SDK
+            logger.warning(
+                "[%s] No ResultMessage — agent was stopped at turn %d.",
+                agent.name, turn,
+            )
+            result = AgentResult(
+                output="",
+                num_turns=turn,
+                conversation_path=conv.path,
+                experience_id=experience_id,
             )
 
-        usage = result_message.usage or {}
-        result = AgentResult(
-            output=result_message.result or "",
-            duration_ms=result_message.duration_ms,
-            num_turns=result_message.num_turns,
-            cost_usd=result_message.total_cost_usd or 0.0,
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-            conversation_path=conv.path,
-            experience_id=experience_id,
-        )
-
         logger.info(
-            "Agent %s finished in %dms (%d turns, cost=$%.4f)",
+            "Agent %s finished (%d turns, cost=$%.4f)",
             agent.name,
-            result.duration_ms,
             result.num_turns,
             result.cost_usd,
         )
