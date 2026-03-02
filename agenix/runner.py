@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from patches.claude_agent_sdk_mcp_fix import apply as _apply_sdk_fix
 
@@ -69,6 +70,70 @@ def _parse_thinking(value: str) -> dict:
     raise ValueError(f"Invalid thinking config: {value!r}")
 
 
+def _log_verifier_result(agent_name: str, turn: int, block: Any) -> None:
+    """Log a verifier tool result with emoji-annotated correctness and performance."""
+    if block.is_error:
+        logger.info(
+            "🔍 [%s] turn %d: VERIFICATION ❌ ERROR: %s",
+            agent_name, turn,
+            (block.content[:300] if isinstance(block.content, str) else str(block.content)[:300]),
+        )
+        return
+
+    # Parse verifier JSON from content
+    raw = ""
+    if isinstance(block.content, str):
+        raw = block.content
+    elif isinstance(block.content, list):
+        # MCP tool results may be [{type: "text", text: "..."}]
+        for part in block.content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                raw = part.get("text", "")
+                break
+            if hasattr(part, "text"):
+                raw = part.text
+                break
+
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.info(
+            "🔍 [%s] turn %d: VERIFICATION result (unparseable): %s",
+            agent_name, turn, raw[:300],
+        )
+        return
+
+    compiled = data.get("compiled", False)
+    correct = data.get("correctness", False)
+    runtime = data.get("runtime", -1.0)
+    stats = data.get("runtime_stats", {})
+    gen_ms = stats.get("generated_ms", runtime if runtime > 0 else None)
+    ref_ms = stats.get("reference_ms")
+
+    # Build emoji summary
+    compiled_str = "✅ Compiled" if compiled else "❌ Compile failed"
+    correct_str = "✅ Correct" if correct else "❌ Incorrect"
+
+    perf_parts: list[str] = []
+    if gen_ms is not None and gen_ms > 0:
+        perf_parts.append(f"⏱️  {gen_ms:.3f}ms")
+    if ref_ms is not None and ref_ms > 0:
+        perf_parts.append(f"ref {ref_ms:.3f}ms")
+    if gen_ms and ref_ms and gen_ms > 0 and ref_ms > 0:
+        speedup = ref_ms / gen_ms
+        if speedup >= 1.0:
+            perf_parts.append(f"🚀 {speedup:.2f}x speedup")
+        else:
+            perf_parts.append(f"🐢 {speedup:.2f}x (slower)")
+
+    perf_str = " | ".join(perf_parts) if perf_parts else "no timing"
+
+    logger.info(
+        "🔍 [%s] turn %d: VERIFICATION — %s | %s | %s",
+        agent_name, turn, compiled_str, correct_str, perf_str,
+    )
+
+
 class ClaudeRunner:
     """AgentRunner implementation using claude_agent_sdk.query()."""
 
@@ -126,13 +191,15 @@ class ClaudeRunner:
 
         result_message: ResultMessage | None = None
         turn = 0
+        tool_names: dict[str, str] = {}  # tool_use_id → tool_name
         async for message in query(prompt=input_payload, options=options):
             if isinstance(message, AssistantMessage):
                 turn += 1
                 self._log_assistant_message(agent.name, turn, message)
+                self._track_tool_names(message, tool_names)
                 conv.log_assistant(message)
             elif isinstance(message, UserMessage):
-                self._log_user_message(agent.name, turn, message)
+                self._log_user_message(agent.name, turn, message, tool_names)
                 conv.log_user(message)
             elif isinstance(message, SystemMessage):
                 logger.info(
@@ -211,13 +278,32 @@ class ClaudeRunner:
                 )
 
     @staticmethod
-    def _log_user_message(agent_name: str, turn: int, msg: UserMessage) -> None:
+    def _track_tool_names(msg: AssistantMessage, tool_names: dict[str, str]) -> None:
+        """Populate tool_use_id → tool_name mapping from assistant tool_use blocks."""
+        from claude_agent_sdk.types import ToolUseBlock
+
+        for block in msg.content:
+            if isinstance(block, ToolUseBlock):
+                tool_names[block.id] = block.name
+
+    @staticmethod
+    def _log_user_message(
+        agent_name: str,
+        turn: int,
+        msg: UserMessage,
+        tool_names: dict[str, str] | None = None,
+    ) -> None:
         """Log a user message (typically tool results)."""
         from claude_agent_sdk.types import ToolResultBlock
 
         if isinstance(msg.content, list):
             for block in msg.content:
                 if isinstance(block, ToolResultBlock):
+                    tool_name = (tool_names or {}).get(block.tool_use_id, "")
+                    # Log verifier results with emoji summary
+                    if "verifier" in tool_name:
+                        _log_verifier_result(agent_name, turn, block)
+                        continue
                     content_preview = ""
                     if isinstance(block.content, str):
                         content_preview = block.content[:200].replace("\n", " ")
