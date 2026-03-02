@@ -70,12 +70,13 @@ def _parse_thinking(value: str) -> dict:
     raise ValueError(f"Invalid thinking config: {value!r}")
 
 
-def _log_verifier_result(agent_name: str, turn: int, block: Any) -> None:
+def _log_verifier_result(agent_name: str, turn: int, block: Any, problem_title: str = "") -> None:
     """Log a verifier tool result with emoji-annotated correctness and performance."""
+    tag = f" [{problem_title}]" if problem_title else ""
     if block.is_error:
         logger.info(
-            "🔍 [%s] turn %d: VERIFICATION ❌ ERROR: %s",
-            agent_name, turn,
+            "🔍 [%s] turn %d%s: VERIFICATION ❌ ERROR: %s",
+            agent_name, turn, tag,
             (block.content[:300] if isinstance(block.content, str) else str(block.content)[:300]),
         )
         return
@@ -98,8 +99,8 @@ def _log_verifier_result(agent_name: str, turn: int, block: Any) -> None:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         logger.info(
-            "🔍 [%s] turn %d: VERIFICATION result (unparseable): %s",
-            agent_name, turn, raw[:300],
+            "🔍 [%s] turn %d%s: VERIFICATION result (unparseable): %s",
+            agent_name, turn, tag, raw[:300],
         )
         return
 
@@ -133,8 +134,8 @@ def _log_verifier_result(agent_name: str, turn: int, block: Any) -> None:
     perf_str = " | ".join(perf_parts) if perf_parts else "no timing"
 
     logger.info(
-        "🔍 [%s] turn %d: VERIFICATION — %s | %s | %s",
-        agent_name, turn, compiled_str, correct_str, perf_str,
+        "🔍 [%s] turn %d%s: VERIFICATION — %s | %s | %s",
+        agent_name, turn, tag, compiled_str, correct_str, perf_str,
     )
 
 
@@ -190,6 +191,15 @@ class ClaudeRunner:
             options.max_turns,
         )
 
+        # Extract problem title for verification logs (if input is solver JSON)
+        problem_title = ""
+        try:
+            payload = json.loads(input_payload)
+            if isinstance(payload, dict):
+                problem_title = payload.get("problem", {}).get("title", "")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
         # Log the initial user prompt
         conv.log_user_text(input_payload)
 
@@ -211,7 +221,7 @@ class ClaudeRunner:
                     )
                     break
             elif isinstance(message, UserMessage):
-                self._log_user_message(agent.name, turn, message, tool_names)
+                self._log_user_message(agent.name, turn, message, tool_names, problem_title)
                 conv.log_user(message)
             elif isinstance(message, SystemMessage):
                 logger.info(
@@ -313,6 +323,7 @@ class ClaudeRunner:
         turn: int,
         msg: UserMessage,
         tool_names: dict[str, str] | None = None,
+        problem_title: str = "",
     ) -> None:
         """Log a user message (typically tool results)."""
         from claude_agent_sdk.types import ToolResultBlock
@@ -323,7 +334,7 @@ class ClaudeRunner:
                     tool_name = (tool_names or {}).get(block.tool_use_id, "")
                     # Log verifier results with emoji summary
                     if "verifier" in tool_name:
-                        _log_verifier_result(agent_name, turn, block)
+                        _log_verifier_result(agent_name, turn, block, problem_title)
                         continue
                     content_preview = ""
                     if isinstance(block.content, str):
