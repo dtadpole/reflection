@@ -295,14 +295,16 @@ class ClaudeRunner:
                 )
             elif isinstance(block, TextBlock):
                 preview = block.text[:200].replace("\n", " ")
+                chars = len(block.text)
                 logger.info(
-                    "[%s] turn %d: text (%d chars): %s",
-                    agent_name, turn, len(block.text), preview,
+                    "[%s] turn %d: text (%d chars, ~%d tok): %s",
+                    agent_name, turn, chars, chars // 4, preview,
                 )
             elif isinstance(block, ThinkingBlock):
+                chars = len(block.thinking)
                 logger.info(
-                    "[%s] turn %d: thinking (%d chars)",
-                    agent_name, turn, len(block.thinking),
+                    "[%s] turn %d: thinking (%d chars, ~%d tok)",
+                    agent_name, turn, chars, chars // 4,
                 )
             else:
                 logger.info(
@@ -387,6 +389,7 @@ class ClaudeRunner:
             system_prompt=agent.system_prompt or None,
             max_turns=agent.config.max_turns,
             thinking=_parse_thinking(agent.config.thinking),
+            max_thinking_tokens=agent.config.max_thinking_tokens,
             effort=agent.config.effort,
             permission_mode="bypassPermissions",
             # Clear CLAUDECODE so the spawned CLI doesn't refuse to run

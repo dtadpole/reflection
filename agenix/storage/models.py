@@ -177,6 +177,7 @@ class AgentConfig(BaseModel):
     temperature: float = 0.7
     max_turns: int = 10
     thinking: str = "adaptive"  # "adaptive", "disabled", or "enabled:<budget>"
+    max_thinking_tokens: int | None = None  # e.g. 32000 to cap thinking budget
     effort: str = "medium"  # "low", "medium", "high", "max"
     tools: list[str] = Field(default_factory=list)
     custom_tools: list[str] = Field(default_factory=list)

@@ -1,6 +1,7 @@
 model: sonnet
 temperature: 0.5
 max_turns: 100
+max_thinking_tokens: 32000
 tools: []
 custom_tools:
   - recall_fetch
