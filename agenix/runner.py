@@ -70,13 +70,13 @@ def _parse_thinking(value: str) -> dict:
     raise ValueError(f"Invalid thinking config: {value!r}")
 
 
-def _log_verifier_result(agent_name: str, turn: int, block: Any, problem_title: str = "") -> None:
+def _log_verifier_result(turn: int, block: Any, problem_title: str = "") -> None:
     """Log a verifier tool result with emoji-annotated correctness and performance."""
     tag = f" [{problem_title}]" if problem_title else ""
     if block.is_error:
         logger.info(
-            "🔍 [%s] turn %d%s: VERIFICATION ❌ ERROR: %s",
-            agent_name, turn, tag,
+            "🔍 turn %d%s: VERIFICATION ❌ ERROR: %s",
+            turn, tag,
             (block.content[:300] if isinstance(block.content, str) else str(block.content)[:300]),
         )
         return
@@ -99,8 +99,8 @@ def _log_verifier_result(agent_name: str, turn: int, block: Any, problem_title: 
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         logger.info(
-            "🔍 [%s] turn %d%s: VERIFICATION result (unparseable): %s",
-            agent_name, turn, tag, raw[:300],
+            "🔍 turn %d%s: VERIFICATION result (unparseable): %s",
+            turn, tag, raw[:300],
         )
         return
 
@@ -136,8 +136,8 @@ def _log_verifier_result(agent_name: str, turn: int, block: Any, problem_title: 
     perf_str = " | ".join(perf_parts) if perf_parts else "no timing"
 
     logger.info(
-        "🔍 [%s] turn %d%s: VERIFICATION — %s | %s | %s",
-        agent_name, turn, tag, compiled_str, correct_str, perf_str,
+        "🔍 turn %d%s: VERIFICATION — %s | %s | %s",
+        turn, tag, compiled_str, correct_str, perf_str,
     )
 
 
@@ -162,21 +162,17 @@ class ClaudeRunner:
         input_payload: str,
         *,
         conversation_path: Path | None = None,
-        log_name: str | None = None,
     ) -> AgentResult:
         """Run an agent synchronously. Implements the AgentRunner protocol.
 
         Each agent call gets its own asyncio.run() for clean isolation.
         Conversation is logged as JSONL to *conversation_path* (if given),
         or to a new file under *run_dir*, or not at all.
-
-        *log_name* overrides the display name in log messages (e.g.
-        "solver#1") without affecting the experience directory path.
         """
         return asyncio.run(
             self._run_async(
                 agent, input_payload,
-                conversation_path=conversation_path, log_name=log_name,
+                conversation_path=conversation_path,
             )
         )
 
@@ -186,18 +182,15 @@ class ClaudeRunner:
         input_payload: str,
         *,
         conversation_path: Path | None = None,
-        log_name: str | None = None,
     ) -> AgentResult:
         """Run an agent asynchronously via claude_agent_sdk.query()."""
         conv, experience_id = self._make_conversation_logger(
             agent.name, conversation_path,
         )
         options = self._build_options(agent)
-        label = log_name or agent.name
-
         logger.info(
             "Running agent %s (model=%s, max_turns=%s)",
-            label,
+            agent.name,
             options.model,
             options.max_turns,
         )
@@ -221,30 +214,30 @@ class ClaudeRunner:
         async for message in query(prompt=input_payload, options=options):
             if isinstance(message, AssistantMessage):
                 turn += 1
-                self._log_assistant_message(label, turn, message)
+                self._log_assistant_message(turn, message)
                 self._track_tool_names(message, tool_names)
                 conv.log_assistant(message)
                 # Enforce max_turns based on assistant message count
                 if max_turns and turn >= max_turns:
                     logger.info(
-                        "[%s] Reached max_turns=%d, stopping agent.",
-                        label, max_turns,
+                        "Reached max_turns=%d, stopping agent.",
+                        max_turns,
                     )
                     break
             elif isinstance(message, UserMessage):
-                self._log_user_message(label, turn, message, tool_names, problem_title)
+                self._log_user_message(turn, message, tool_names, problem_title)
                 conv.log_user(message)
             elif isinstance(message, SystemMessage):
                 logger.info(
-                    "[%s] system: subtype=%s data=%s",
-                    label, message.subtype, message.data,
+                    "system: subtype=%s data=%s",
+                    message.subtype, message.data,
                 )
                 conv.log_system(message)
             elif isinstance(message, ResultMessage):
                 result_message = message
             else:
                 logger.warning(
-                    "[%s] unknown message type: %s", label, type(message).__name__,
+                    "unknown message type: %s", type(message).__name__,
                 )
 
         if result_message is not None:
@@ -252,7 +245,7 @@ class ClaudeRunner:
 
             if result_message.is_error:
                 raise RuntimeError(
-                    f"Agent {label} returned an error: {result_message.result}"
+                    f"Agent {agent.name} returned an error: {result_message.result}"
                 )
 
             usage = result_message.usage or {}
@@ -269,8 +262,8 @@ class ClaudeRunner:
         else:
             # Stopped early (max_turns reached) — no ResultMessage from SDK
             logger.warning(
-                "[%s] No ResultMessage — agent was stopped at turn %d.",
-                label, turn,
+                "No ResultMessage — agent was stopped at turn %d.",
+                turn,
             )
             result = AgentResult(
                 output="",
@@ -281,7 +274,7 @@ class ClaudeRunner:
 
         logger.info(
             "Agent %s finished (%d turns, cost=$%.4f)",
-            label,
+            agent.name,
             result.num_turns,
             result.cost_usd,
         )
@@ -289,36 +282,36 @@ class ClaudeRunner:
         return result
 
     @staticmethod
-    def _log_assistant_message(agent_name: str, turn: int, msg: AssistantMessage) -> None:
+    def _log_assistant_message(turn: int, msg: AssistantMessage) -> None:
         """Log an assistant message with its content blocks."""
         from claude_agent_sdk.types import TextBlock, ThinkingBlock, ToolUseBlock
 
         if msg.error:
-            logger.warning("[%s] turn %d: error=%s", agent_name, turn, msg.error)
+            logger.warning("turn %d: error=%s", turn, msg.error)
 
         for block in msg.content:
             if isinstance(block, ToolUseBlock):
                 logger.info(
-                    "[%s] turn %d: tool_use %s (id=%s)",
-                    agent_name, turn, block.name, block.id,
+                    "turn %d: tool_use %s (id=%s)",
+                    turn, block.name, block.id,
                 )
             elif isinstance(block, TextBlock):
                 preview = block.text[:200].replace("\n", " ")
                 chars = len(block.text)
                 logger.info(
-                    "[%s] turn %d: text (%d chars, ~%d tok): %s",
-                    agent_name, turn, chars, chars // 4, preview,
+                    "turn %d: text (%d chars, ~%d tok): %s",
+                    turn, chars, chars // 4, preview,
                 )
             elif isinstance(block, ThinkingBlock):
                 chars = len(block.thinking)
                 logger.info(
-                    "[%s] turn %d: thinking (%d chars, ~%d tok)",
-                    agent_name, turn, chars, chars // 4,
+                    "turn %d: thinking (%d chars, ~%d tok)",
+                    turn, chars, chars // 4,
                 )
             else:
                 logger.info(
-                    "[%s] turn %d: block %s",
-                    agent_name, turn, type(block).__name__,
+                    "turn %d: block %s",
+                    turn, type(block).__name__,
                 )
 
     @staticmethod
@@ -332,7 +325,6 @@ class ClaudeRunner:
 
     @staticmethod
     def _log_user_message(
-        agent_name: str,
         turn: int,
         msg: UserMessage,
         tool_names: dict[str, str] | None = None,
@@ -347,7 +339,7 @@ class ClaudeRunner:
                     tool_name = (tool_names or {}).get(block.tool_use_id, "")
                     # Log verifier results with emoji summary
                     if "verifier" in tool_name:
-                        _log_verifier_result(agent_name, turn, block, problem_title)
+                        _log_verifier_result(turn, block, problem_title)
                         continue
                     content_preview = ""
                     if isinstance(block.content, str):
@@ -356,19 +348,19 @@ class ClaudeRunner:
                         content_preview = f"[{len(block.content)} parts]"
                     status = "error" if block.is_error else "ok"
                     logger.info(
-                        "[%s] turn %d: tool_result (%s) for %s: %s",
-                        agent_name, turn, status, block.tool_use_id, content_preview,
+                        "turn %d: tool_result (%s) for %s: %s",
+                        turn, status, block.tool_use_id, content_preview,
                     )
                 else:
                     logger.info(
-                        "[%s] turn %d: user block %s",
-                        agent_name, turn, type(block).__name__,
+                        "turn %d: user block %s",
+                        turn, type(block).__name__,
                     )
         elif isinstance(msg.content, str):
             preview = msg.content[:200].replace("\n", " ")
             logger.info(
-                "[%s] turn %d: user text (%d chars): %s",
-                agent_name, turn, len(msg.content), preview,
+                "turn %d: user text (%d chars): %s",
+                turn, len(msg.content), preview,
             )
 
     def _build_options(self, agent: LoadedAgent) -> ClaudeAgentOptions:

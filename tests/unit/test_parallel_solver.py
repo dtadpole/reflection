@@ -245,11 +245,11 @@ class TestParallelSolverHandler:
         assert len(captured_names) == 3
         assert set(captured_names) == {"solver#1", "solver#2", "solver#3"}
 
-    def test_log_name_passed_to_runner(
+    def test_agent_name_not_mutated(
         self, fs_backend, knowledge_store, experiences_queue, message,
     ):
-        """Runner.run() receives log_name=solver#N."""
-        captured_log_names: list[str] = []
+        """Runner.run() receives the original agent (name not mutated to solver#N)."""
+        captured_agent_names: list[str] = []
 
         def factory():
             runner = MagicMock()
@@ -260,7 +260,7 @@ class TestParallelSolverHandler:
             original_run = runner.run
 
             def capturing_run(agent, payload, **kwargs):
-                captured_log_names.append(kwargs.get("log_name", ""))
+                captured_agent_names.append(agent.name)
                 return original_run(agent, payload, **kwargs)
 
             runner.run = capturing_run
@@ -277,8 +277,11 @@ class TestParallelSolverHandler:
 
         handler.handle(message)
 
-        assert len(captured_log_names) == 2
-        assert set(captured_log_names) == {"solver#1", "solver#2"}
+        assert len(captured_agent_names) == 2
+        # agent.name must never be mutated to include "#" (e.g. "solver#1")
+        assert all("#" not in n for n in captured_agent_names)
+        # All instances get the same (original) agent name
+        assert len(set(captured_agent_names)) == 1
 
 
 class TestCriticHandlerBatch:

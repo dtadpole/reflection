@@ -132,7 +132,7 @@ class ParallelSolverHandler:
             runner = self._runner_factory()
             agent = load_agent("solver")
             logger.info("[%s] starting for %s", label, problem_id)
-            result = runner.run(agent, input_payload, log_name=label)
+            result = runner.run(agent, input_payload)
 
             if result.experience_id:
                 logger.info(
