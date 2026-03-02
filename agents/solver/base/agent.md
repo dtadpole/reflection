@@ -128,8 +128,17 @@ A JSON object with:
   - `reference_code`: The complete PyTorch reference source code
   - `domain`: "triton_kernels"
   - `difficulty`: "easy" | "medium" | "hard"
-- `knowledge`: Retrieved knowledge cards (Triton patterns, optimization techniques)
+- `knowledge`: Retrieved knowledge cards, each with:
+  - `title`: Card title
+  - `content`: Structured knowledge (with sections: Technique, When to Use, etc.)
+  - `card_type`: "knowledge" | "reflection" | "insight"
+  - `tags`: Relevant tags for filtering
+  - `code_snippet` (optional): Concrete Triton code pattern — **use these directly as starting points**
+  - `applicability` (optional): When this knowledge applies
+  - `limitations` (optional): When this does NOT apply
 - `previous_attempts`: Previous experiences for this problem (if any)
+
+**How to use knowledge cards**: Pay special attention to `code_snippet` fields — these are tested Triton patterns you can adapt. Check `applicability` to see if a card matches your problem. Check `limitations` to avoid known pitfalls.
 
 ## Output Format
 You MUST respond with a JSON object. Do not output anything outside the JSON.

@@ -58,14 +58,23 @@ class SolverHandler:
             query=retrieval_query,
             limit=self._knowledge_limit,
         )
-        knowledge = [
-            {
+        knowledge = []
+        for r in knowledge_hits:
+            card = r["card"]
+            entry: dict = {
                 "title": r["title"],
-                "content": r["card"].content,
+                "content": card.content,
                 "card_type": r["card_type"],
+                "tags": card.tags,
             }
-            for r in knowledge_hits
-        ]
+            if card.code_snippet:
+                entry["code_snippet"] = card.code_snippet
+            # KnowledgeCard-specific fields
+            if hasattr(card, "applicability") and card.applicability:
+                entry["applicability"] = card.applicability
+            if hasattr(card, "limitations") and card.limitations:
+                entry["limitations"] = card.limitations
+            knowledge.append(entry)
 
         # Build solver input
         input_payload = json.dumps({

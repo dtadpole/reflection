@@ -151,6 +151,7 @@ class Card(BaseModel):
     card_type: CardType
     title: str
     content: str
+    code_snippet: str = ""
     tags: list[str] = Field(default_factory=list)
     source_ids: list[str] = Field(default_factory=list)
     version: int = 1

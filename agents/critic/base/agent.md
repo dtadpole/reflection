@@ -20,6 +20,26 @@ Guidelines:
 - Categorize each reflection: algorithm, pattern, debugging, optimization, or general
 - Reference the specific experience steps that support your analysis
 - Produce 2-5 reflection cards per experience
+- Include a `code_snippet` with the key Triton code pattern when applicable
+- Structure the `content` field using the template sections below
+
+### Content Template
+
+Structure the `content` field of each reflection card with these sections:
+
+```
+## Technique
+[What optimization technique or pattern was used — be specific]
+
+## Problem Context
+[What operation type, tensor shapes, problem characteristics it applies to]
+
+## Outcome
+[Did it work? What speedup was achieved? What broke if it failed?]
+
+## Lesson
+[Actionable takeaway — what should a solver remember for future problems?]
+```
 
 You must respond with a JSON object matching the output format.
 
@@ -32,7 +52,8 @@ A JSON object with:
 A JSON object with:
 - `reflection_cards`: Array of reflection card objects, each with:
   - `title`: Short descriptive title for the reflection
-  - `content`: Detailed analysis (2-4 sentences)
+  - `content`: Detailed analysis using the content template above
+  - `code_snippet`: Key Triton code pattern (if applicable, empty string if not)
   - `category`: One of "algorithm", "pattern", "debugging", "optimization", "general"
   - `confidence`: Float 0.0-1.0
   - `tags`: Array of relevant tags
@@ -54,7 +75,7 @@ Input:
       {"step_index": 0, "step_type": "thought", "content": "Simple elementwise op, 1D grid with masking"},
       {"step_index": 1, "step_type": "action", "content": "Wrote relu_kernel with tl.where"}
     ],
-    "code_solution": "@triton.jit\ndef relu_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr):\n    ...\n\nclass ModelNew(nn.Module):\n    def forward(self, x): ...",
+    "code_solution": "@triton.jit\ndef relu_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr):\n    pid = tl.program_id(0)\n    offs = pid * BLOCK + tl.arange(0, BLOCK)\n    mask = offs < n\n    x = tl.load(x_ptr + offs, mask=mask)\n    tl.store(out_ptr + offs, tl.where(x > 0, x, 0.0), mask=mask)\n\nclass ModelNew(nn.Module):\n    def forward(self, x):\n        out = torch.empty_like(x)\n        n = x.numel()\n        relu_kernel[(n + 1023) // 1024,](x, out, n, BLOCK=1024)\n        return out",
     "is_correct": true
   }
 }
@@ -66,10 +87,11 @@ Output:
   "reflection_cards": [
     {
       "title": "Elementwise ops map directly to 1D Triton grids",
-      "content": "The solver correctly identified ReLU as a simple elementwise operation and used a 1D grid with tl.where for the conditional. This is the canonical pattern for pointwise operations: flatten to 1D, use BLOCK_SIZE striding, and apply a tail mask for the last block.",
+      "content": "## Technique\nFlattened 1D grid with block-stride indexing and tail masking for elementwise ReLU.\n\n## Problem Context\nSimple pointwise activation (ReLU) on arbitrary-shaped tensors. No inter-element dependencies.\n\n## Outcome\nCorrect on first attempt. The canonical 1D elementwise pattern works reliably for any pointwise operation.\n\n## Lesson\nFor any elementwise op: flatten input to 1D, use `pid * BLOCK + tl.arange(0, BLOCK)` for offsets, apply `mask = offs < n` for the tail block. This pattern is the building block for more complex fused kernels.",
+      "code_snippet": "@triton.jit\ndef elementwise_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr):\n    pid = tl.program_id(0)\n    offs = pid * BLOCK + tl.arange(0, BLOCK)\n    mask = offs < n\n    x = tl.load(x_ptr + offs, mask=mask)\n    # Apply operation here\n    tl.store(out_ptr + offs, result, mask=mask)",
       "category": "pattern",
       "confidence": 0.95,
-      "tags": ["elementwise", "triton_grid", "masking", "relu"],
+      "tags": ["elementwise", "triton_grid", "masking", "relu", "1d_pattern"],
       "supporting_steps": [0, 1]
     }
   ]

@@ -134,6 +134,7 @@ def parse_reflection_cards(
         cards.append(ReflectionCard(
             title=rc["title"],
             content=rc["content"],
+            code_snippet=rc.get("code_snippet", ""),
             experience_id=experience_id,
             category=category,
             confidence=rc.get("confidence", 0.5),
@@ -153,6 +154,7 @@ def parse_knowledge_actions(output: str) -> list[KnowledgeCard]:
         cards.append(KnowledgeCard(
             title=action["title"],
             content=action["content"],
+            code_snippet=action.get("code_snippet", ""),
             domain=action.get("domain", "general"),
             applicability=action.get("applicability", ""),
             limitations=action.get("limitations", ""),
@@ -170,6 +172,7 @@ def parse_insight_cards(output: str) -> list[InsightCard]:
         cards.append(InsightCard(
             title=ic["title"],
             content=ic["content"],
+            code_snippet=ic.get("code_snippet", ""),
             hypothesis=ic.get("hypothesis", ""),
             evidence_for=ic.get("evidence_for", []),
             evidence_against=ic.get("evidence_against", []),
