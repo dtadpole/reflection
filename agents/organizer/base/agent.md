@@ -105,7 +105,7 @@ Input:
       "title": "Fusing GeLU + Dropout reduces memory bandwidth",
       "content": "## Technique\nFused GeLU and dropout into a single Triton kernel pass.\n\n## Problem Context\nSequential elementwise ops (GeLU then dropout) on large tensors.\n\n## Outcome\nEliminated intermediate tensor write/read, 1.8x speedup over separate kernels.\n\n## Lesson\nAlways fuse sequential elementwise ops — the bandwidth savings are substantial.",
       "code_snippet": "@triton.jit\ndef fused_gelu_dropout(x_ptr, out_ptr, p, seed, n, BLOCK: tl.constexpr):\n    ...",
-      "confidence": 0.9,
+      "reflection_confidence": 0.9,
       "tags": ["fusion", "gelu", "dropout"]
     }
   ]

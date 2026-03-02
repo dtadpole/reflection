@@ -157,7 +157,50 @@ class TestParseReflectionCards:
         assert len(cards) == 1
         assert cards[0].title == "Good pattern"
         assert cards[0].experience_ids == ["exp_1"]
-        assert cards[0].confidence == 0.9
+        assert cards[0].reflection_confidence == 0.9
+
+
+    def test_markdown_fallback(self):
+        """Critic often outputs markdown instead of JSON."""
+        output = """## Analysis
+
+### Reflection Card 1 — Tiling improves matmul performance
+
+**Observation:** Using shared memory tiling for matmul reduces global memory access.
+
+**Code snippet:**
+```python
+@triton.jit
+def matmul_kernel(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
+    pass
+```
+
+**Confidence:** 0.85 — confirmed with benchmarks
+
+**Tags:** tiling, matmul, shared_memory
+
+---
+
+### Reflection Card 2 — FP16 accumulator causes precision loss
+
+**Observation:** FP16 accumulators lose precision in reduction kernels.
+
+**Confidence:** 0.70
+"""
+        cards = parse_reflection_cards(output, ["exp_1"])
+        assert len(cards) == 2
+        assert cards[0].title == "Tiling improves matmul performance"
+        assert cards[0].reflection_confidence == 0.85
+        assert "@triton.jit" in cards[0].code_snippet
+        assert "tiling" in cards[0].tags
+        assert cards[1].title == "FP16 accumulator causes precision loss"
+        assert cards[1].reflection_confidence == 0.70
+
+    def test_markdown_no_cards(self):
+        """Markdown with no card sections returns empty list."""
+        output = "Just some analysis text with no cards."
+        cards = parse_reflection_cards(output, ["exp_1"])
+        assert len(cards) == 0
 
 
 class TestParseKnowledgeActions:

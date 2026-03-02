@@ -229,7 +229,7 @@ class TestCreate:
             "global memory access by factor of tile_size.",
             tags=["gpu", "shared_memory", "tiling"],
             experience_ids=["exp-002"],
-            confidence=0.85,
+            reflection_confidence=0.85,
             supporting_steps=[3, 5, 7],
         )
         record_creation(
@@ -244,7 +244,7 @@ class TestCreate:
 
         loaded = store.get_card(card.card_id)
         assert loaded.card_type == "reflection"
-        assert loaded.confidence == 0.85
+        assert loaded.reflection_confidence == 0.85
 
     def test_create_multiple_and_search(self, store):
         """Multiple cards should all be searchable with semantic relevance."""

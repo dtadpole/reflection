@@ -189,7 +189,7 @@ class TestParseReflectionCards:
         card = cards[0]
         assert card.title == "Python slicing for reversal"
         assert card.experience_ids == ["exp_123"]
-        assert card.confidence == 0.9
+        assert card.reflection_confidence == 0.9
         assert card.supporting_steps == [0]
 
 class TestParseKnowledgeActions:

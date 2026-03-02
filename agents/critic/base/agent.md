@@ -34,7 +34,7 @@ After reading the full experience, analyze:
 - Be specific and actionable — reference concrete kernel code patterns
 - Recognize and praise valuable risky attempts that failed but showed promise
 - Each reflection card should capture ONE distinct observation
-- Assign a confidence score (0.0-1.0) based on evidence strength
+- Assign a reflection_confidence score (0.0-1.0) based on evidence strength
 - Produce 1-3 reflection cards per experience
 - Include a `code_snippet` with the key Triton code pattern when applicable
 
@@ -72,7 +72,7 @@ CRITICAL: Your final output MUST be ONLY a JSON object — no markdown, no expla
       "title": "Short descriptive title",
       "content": "## Technique\n...\n\n## Problem Context\n...\n\n## Outcome\n...\n\n## Lesson\n...",
       "code_snippet": "@triton.jit\ndef kernel(...): ...",
-      "confidence": 0.85,
+      "reflection_confidence": 0.85,
       "tags": ["tag1", "tag2"],
       "domain": "triton_kernels",
       "applicability": "When reducing over dimensions > 1024 elements",
@@ -86,7 +86,7 @@ Fields:
 - `title`: Short descriptive title for the reflection
 - `content`: Detailed analysis using the content template
 - `code_snippet`: Key Triton code pattern (empty string if not applicable)
-- `confidence`: Float 0.0-1.0
+- `reflection_confidence`: Float 0.0-1.0
 - `tags`: Array of relevant tags
 - `domain`: Problem domain (e.g. "triton_kernels")
 - `applicability`: When and how to apply this technique (free text)

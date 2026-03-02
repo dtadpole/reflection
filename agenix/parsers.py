@@ -6,6 +6,7 @@ Extracted from pipeline.py so handlers can reuse them independently.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -124,11 +125,10 @@ def parse_experience(
     return Experience(**kwargs)
 
 
-def parse_reflection_cards(
-    output: str, experience_ids: list[str],
+def _parse_reflection_cards_json(
+    data: dict, experience_ids: list[str],
 ) -> list[Card]:
-    """Parse critic output into reflection Cards."""
-    data = extract_json(output)
+    """Parse JSON-format critic output into reflection Cards."""
     cards = []
     for rc in data.get("reflection_cards", []):
         cards.append(Card(
@@ -138,7 +138,7 @@ def parse_reflection_cards(
             code_snippet=rc.get("code_snippet", ""),
             experience_ids=experience_ids[:3],
             domain=rc.get("domain", "general"),
-            confidence=rc.get("confidence", 0.5),
+            reflection_confidence=rc.get("reflection_confidence", rc.get("confidence", 0.5)),
             tags=rc.get("tags", []),
             supporting_steps=rc.get("supporting_steps", []),
 
@@ -146,6 +146,91 @@ def parse_reflection_cards(
             limitations=rc.get("limitations", ""),
         ))
     return cards
+
+
+def _parse_reflection_cards_markdown(
+    output: str, experience_ids: list[str],
+) -> list[Card]:
+    """Parse markdown-format critic output into reflection Cards.
+
+    Handles the natural output format of the Claude agent, which produces
+    markdown sections like:
+        ### Reflection Card N — Title
+        **Observation:** ...
+        **Code snippet:**
+        ```python
+        ...
+        ```
+        **Confidence:** 0.85
+    """
+    cards = []
+    # Split on "### Reflection Card" or "### Card" headers
+    sections = re.split(
+        r"###\s+(?:Reflection\s+)?Card\s*\d*\s*[—–-]\s*",
+        output,
+        flags=re.IGNORECASE,
+    )
+    for section in sections[1:]:  # Skip preamble before first card
+        # Title: first non-empty line
+        lines = section.strip().split("\n")
+        title = lines[0].strip().rstrip("*").strip()
+
+        # Code snippet: extract from fenced code block
+        code_match = re.search(
+            r"```(?:python)?\s*\n(.*?)```",
+            section,
+            re.DOTALL,
+        )
+        code_snippet = code_match.group(1).strip() if code_match else ""
+
+        # Confidence: look for **Confidence:** N.NN
+        conf_match = re.search(
+            r"\*\*Confidence[:\*]*\s*(\d+\.?\d*)",
+            section,
+        )
+        confidence = float(conf_match.group(1)) if conf_match else 0.5
+        confidence = max(0.0, min(1.0, confidence))
+
+        # Content: everything except the title line
+        content = "\n".join(lines[1:]).strip()
+
+        # Tags: look for **Tags:** or tags: [...]
+        tags_match = re.search(
+            r"\*\*Tags[:\*]*\s*(.+)",
+            section,
+        )
+        tags: list[str] = []
+        if tags_match:
+            raw = tags_match.group(1).strip()
+            tags = [t.strip().strip("`") for t in raw.split(",")]
+
+        cards.append(Card(
+            card_type="reflection",
+            title=title,
+            content=content,
+            code_snippet=code_snippet,
+            experience_ids=experience_ids[:3],
+            domain="triton_kernels",
+            reflection_confidence=confidence,
+            tags=tags,
+        ))
+    return cards
+
+
+def parse_reflection_cards(
+    output: str, experience_ids: list[str],
+) -> list[Card]:
+    """Parse critic output into reflection Cards.
+
+    Tries JSON first, falls back to markdown parsing.
+    """
+    try:
+        data = extract_json(output)
+        return _parse_reflection_cards_json(data, experience_ids)
+    except (ValueError, KeyError):
+        pass
+    # Fall back to markdown parsing
+    return _parse_reflection_cards_markdown(output, experience_ids)
 
 
 def parse_knowledge_actions(
