@@ -1304,7 +1304,7 @@ def _find_endpoint(cfg: ReflectionConfig, name: str):
 
 def _setup_logging(verbose: bool, log_file: Path | None = None) -> None:
     level = logging.DEBUG if verbose else logging.WARNING
-    fmt = "%(asctime)s %(name)s %(levelname)s [%(threadName)s] %(message)s"
+    fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
     logging.basicConfig(level=level, format=fmt, datefmt=datefmt)
     if log_file is not None:
