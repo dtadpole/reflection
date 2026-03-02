@@ -221,6 +221,66 @@ class TestParallelSolverHandler:
         assert len(payload["experience_ids"]) == 2
 
 
+    def test_thread_name_set(self, fs_backend, knowledge_store, experiences_queue, message):
+        """Each solver thread gets its name set to solver#N."""
+        import threading
+
+        captured_names: list[str] = []
+
+        def factory():
+            captured_names.append(threading.current_thread().name)
+            return _make_runner("exp_x")
+
+        handler = ParallelSolverHandler(
+            runner_factory=factory,
+            fs_backend=fs_backend,
+            knowledge_store=knowledge_store,
+            experiences_queue=experiences_queue,
+            run_tag="test_run",
+            parallel=3,
+        )
+
+        handler.handle(message)
+
+        assert len(captured_names) == 3
+        assert set(captured_names) == {"solver#1", "solver#2", "solver#3"}
+
+    def test_log_name_passed_to_runner(
+        self, fs_backend, knowledge_store, experiences_queue, message,
+    ):
+        """Runner.run() receives log_name=solver#N."""
+        captured_log_names: list[str] = []
+
+        def factory():
+            runner = MagicMock()
+            runner.run.return_value = AgentResult(
+                output="done", experience_id="exp_x",
+            )
+
+            original_run = runner.run
+
+            def capturing_run(agent, payload, **kwargs):
+                captured_log_names.append(kwargs.get("log_name", ""))
+                return original_run(agent, payload, **kwargs)
+
+            runner.run = capturing_run
+            return runner
+
+        handler = ParallelSolverHandler(
+            runner_factory=factory,
+            fs_backend=fs_backend,
+            knowledge_store=knowledge_store,
+            experiences_queue=experiences_queue,
+            run_tag="test_run",
+            parallel=2,
+        )
+
+        handler.handle(message)
+
+        assert len(captured_log_names) == 2
+        assert set(captured_log_names) == {"solver#1", "solver#2"}
+
+
 class TestCriticHandlerBatch:
     """Test CriticHandler with batch payloads."""
 

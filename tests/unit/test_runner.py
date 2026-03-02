@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from agenix.runner import ClaudeRunner, resolve_model
+import pytest
+
+from agenix.runner import ClaudeRunner, _parse_thinking, resolve_model
 from agenix.storage.models import AgentConfig, LoadedAgent
 from agenix.tools.registry import ToolRegistry
 
@@ -127,6 +129,110 @@ class TestBuildOptions:
         agent = _make_agent()
         opts = runner._build_options(agent)
         assert opts.cwd == tmp_path
+
+
+    def test_max_thinking_tokens_propagated(self):
+        runner = ClaudeRunner()
+        agent = _make_agent(config=AgentConfig(max_thinking_tokens=32000))
+        opts = runner._build_options(agent)
+        assert opts.max_thinking_tokens == 32000
+
+    def test_max_thinking_tokens_none_by_default(self):
+        runner = ClaudeRunner()
+        agent = _make_agent()
+        opts = runner._build_options(agent)
+        assert opts.max_thinking_tokens is None
+
+    def test_thinking_adaptive(self):
+        runner = ClaudeRunner()
+        agent = _make_agent(config=AgentConfig(thinking="adaptive"))
+        opts = runner._build_options(agent)
+        assert opts.thinking == {"type": "adaptive"}
+
+    def test_thinking_disabled(self):
+        runner = ClaudeRunner()
+        agent = _make_agent(config=AgentConfig(thinking="disabled"))
+        opts = runner._build_options(agent)
+        assert opts.thinking == {"type": "disabled"}
+
+    def test_thinking_enabled_with_budget(self):
+        runner = ClaudeRunner()
+        agent = _make_agent(config=AgentConfig(thinking="enabled:10000"))
+        opts = runner._build_options(agent)
+        assert opts.thinking == {"type": "enabled", "budget_tokens": 10000}
+
+    def test_effort_propagated(self):
+        runner = ClaudeRunner()
+        agent = _make_agent(config=AgentConfig(effort="high"))
+        opts = runner._build_options(agent)
+        assert opts.effort == "high"
+
+
+# --- _parse_thinking ---
+
+
+class TestParseThinking:
+    def test_adaptive(self):
+        assert _parse_thinking("adaptive") == {"type": "adaptive"}
+
+    def test_disabled(self):
+        assert _parse_thinking("disabled") == {"type": "disabled"}
+
+    def test_enabled_with_budget(self):
+        assert _parse_thinking("enabled:10000") == {
+            "type": "enabled", "budget_tokens": 10000,
+        }
+
+    def test_enabled_large_budget(self):
+        assert _parse_thinking("enabled:128000") == {
+            "type": "enabled", "budget_tokens": 128000,
+        }
+
+    def test_invalid_raises(self):
+        with pytest.raises(ValueError, match="Invalid thinking config"):
+            _parse_thinking("unknown")
+
+    def test_invalid_enabled_no_budget_raises(self):
+        with pytest.raises(ValueError):
+            _parse_thinking("enabled:")
+
+
+# --- ConversationLogger path logic ---
+
+
+class TestMakeConversationLogger:
+    def test_explicit_path(self, tmp_path):
+        path = tmp_path / "test.jsonl"
+        runner = ClaudeRunner()
+        conv, eid = runner._make_conversation_logger("solver", path)
+        assert conv.path == path
+        assert eid == "test"
+
+    def test_experiences_dir(self, tmp_path):
+        runner = ClaudeRunner(experiences_dir=tmp_path)
+        conv, eid = runner._make_conversation_logger("solver")
+        assert eid is not None
+        assert "solver" in str(conv.path)
+        assert conv.path.suffix == ".jsonl"
+
+    def test_run_dir(self, tmp_path):
+        runner = ClaudeRunner(run_dir=tmp_path)
+        conv, eid = runner._make_conversation_logger("solver")
+        assert eid is not None
+        assert conv.path.parent == tmp_path
+
+    def test_no_dirs_returns_null(self):
+        runner = ClaudeRunner()
+        conv, eid = runner._make_conversation_logger("solver")
+        assert eid is None
+
+    def test_experiences_dir_uses_agent_name_not_log_name(self, tmp_path):
+        """Experience path uses agent.name (solver), not log_name (solver#1)."""
+        runner = ClaudeRunner(experiences_dir=tmp_path)
+        # _make_conversation_logger always receives agent.name, not log_name
+        conv, eid = runner._make_conversation_logger("solver")
+        assert "solver" in str(conv.path)
+        assert "#" not in str(conv.path)
 
 
 class TestClaudeRunnerInit:
