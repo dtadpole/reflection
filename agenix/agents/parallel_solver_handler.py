@@ -128,10 +128,8 @@ class ParallelSolverHandler:
         try:
             runner = self._runner_factory()
             agent = load_agent("solver")
-            # Tag the agent name so all runner logs show the instance number
-            agent.name = label
             logger.info("[%s] starting for %s", label, problem_id)
-            result = runner.run(agent, input_payload)
+            result = runner.run(agent, input_payload, log_name=label)
 
             if result.experience_id:
                 logger.info(

@@ -162,15 +162,22 @@ class ClaudeRunner:
         input_payload: str,
         *,
         conversation_path: Path | None = None,
+        log_name: str | None = None,
     ) -> AgentResult:
         """Run an agent synchronously. Implements the AgentRunner protocol.
 
         Each agent call gets its own asyncio.run() for clean isolation.
         Conversation is logged as JSONL to *conversation_path* (if given),
         or to a new file under *run_dir*, or not at all.
+
+        *log_name* overrides the display name in log messages (e.g.
+        "solver#1") without affecting the experience directory path.
         """
         return asyncio.run(
-            self._run_async(agent, input_payload, conversation_path=conversation_path)
+            self._run_async(
+                agent, input_payload,
+                conversation_path=conversation_path, log_name=log_name,
+            )
         )
 
     async def _run_async(
@@ -179,16 +186,18 @@ class ClaudeRunner:
         input_payload: str,
         *,
         conversation_path: Path | None = None,
+        log_name: str | None = None,
     ) -> AgentResult:
         """Run an agent asynchronously via claude_agent_sdk.query()."""
         conv, experience_id = self._make_conversation_logger(
             agent.name, conversation_path,
         )
         options = self._build_options(agent)
+        label = log_name or agent.name
 
         logger.info(
             "Running agent %s (model=%s, max_turns=%s)",
-            agent.name,
+            label,
             options.model,
             options.max_turns,
         )
@@ -212,30 +221,30 @@ class ClaudeRunner:
         async for message in query(prompt=input_payload, options=options):
             if isinstance(message, AssistantMessage):
                 turn += 1
-                self._log_assistant_message(agent.name, turn, message)
+                self._log_assistant_message(label, turn, message)
                 self._track_tool_names(message, tool_names)
                 conv.log_assistant(message)
                 # Enforce max_turns based on assistant message count
                 if max_turns and turn >= max_turns:
                     logger.info(
                         "[%s] Reached max_turns=%d, stopping agent.",
-                        agent.name, max_turns,
+                        label, max_turns,
                     )
                     break
             elif isinstance(message, UserMessage):
-                self._log_user_message(agent.name, turn, message, tool_names, problem_title)
+                self._log_user_message(label, turn, message, tool_names, problem_title)
                 conv.log_user(message)
             elif isinstance(message, SystemMessage):
                 logger.info(
                     "[%s] system: subtype=%s data=%s",
-                    agent.name, message.subtype, message.data,
+                    label, message.subtype, message.data,
                 )
                 conv.log_system(message)
             elif isinstance(message, ResultMessage):
                 result_message = message
             else:
                 logger.warning(
-                    "[%s] unknown message type: %s", agent.name, type(message).__name__,
+                    "[%s] unknown message type: %s", label, type(message).__name__,
                 )
 
         if result_message is not None:
@@ -243,7 +252,7 @@ class ClaudeRunner:
 
             if result_message.is_error:
                 raise RuntimeError(
-                    f"Agent {agent.name} returned an error: {result_message.result}"
+                    f"Agent {label} returned an error: {result_message.result}"
                 )
 
             usage = result_message.usage or {}
@@ -261,7 +270,7 @@ class ClaudeRunner:
             # Stopped early (max_turns reached) — no ResultMessage from SDK
             logger.warning(
                 "[%s] No ResultMessage — agent was stopped at turn %d.",
-                agent.name, turn,
+                label, turn,
             )
             result = AgentResult(
                 output="",
@@ -272,7 +281,7 @@ class ClaudeRunner:
 
         logger.info(
             "Agent %s finished (%d turns, cost=$%.4f)",
-            agent.name,
+            label,
             result.num_turns,
             result.cost_usd,
         )
