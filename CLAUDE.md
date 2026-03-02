@@ -23,7 +23,8 @@ uv run reflection queues status
 
 # 3. Start solver (requires SSH tunnels for verifier + embedder)
 reflection services tunnel start
-uv run reflection agent solver -v
+uv run reflection agent solver -v                # Single solver
+uv run reflection agent solver --parallel 3 -v   # Parallel (3 instances per problem)
 
 # 4. Start critic (in another terminal)
 uv run reflection agent critic -v
@@ -59,15 +60,19 @@ uv run ruff check . --fix                  # Auto-fix lint issues
 ## Project Structure
 
 - `agenix/` — Agent execution framework (Claude Agent SDK runtime, orchestration, tools, storage)
-  - `agenix/agents/` — Agent handlers (curator, solver, critic, organizer, insight finder)
+  - `agenix/agents/` — Agent handlers (curator, solver, parallel_solver, critic, organizer, insight finder)
   - `agenix/agent_loop.py` — QueueAgentLoop + ScheduledAgentLoop abstractions
+  - `agenix/runner.py` — ClaudeRunner (claude-agent-sdk query), supports `log_name` for parallel labeling
   - `agenix/parsers.py` — Output parsers for agent responses
   - `agenix/queue/` — Filesystem-based message queues (FSQueue)
+  - `agenix/storage/lineage.py` — Card lineage operations (create/revise/merge/split/archive)
 - `agents/` — Agent definitions (markdown + YAML + Python), each agent is a subfolder
+  - `agents/critic/base/` — Single-experience critic
+  - `agents/critic/batch/` — Batch comparative critic (for parallel solver)
 - `tools/` — Tool definitions (tool.md + config.yaml + logic.py), each tool is a subfolder
 - `cli/` — Typer CLI entry point
 - `config/` — Hydra YAML configs (system-level)
-- `DESIGN.md` — Architecture diagrams and pipeline flow
+- `DESIGN.md` — Architecture diagrams, card lifecycle, and pipeline flow
 
 ## Architecture: Async Queue-Based
 
@@ -106,9 +111,9 @@ Three queues (`problems`, `experiences`, `reflections`) under `<data_root>/<env>
 
 | Queue | Producer | Consumer | Payload |
 |-------|----------|----------|---------|
-| `problems` | CURATOR | SOLVER | `{problem_id}` |
-| `experiences` | SOLVER | CRITIC | `{experience_id, problem_id}` |
-| `reflections` | CRITIC | ORGANIZER/INSIGHT_FINDER (future) | `{card_id}` |
+| `problems` | CURATOR | SOLVER | `{problem_id, title}` |
+| `experiences` | SOLVER | CRITIC | `{problem_id, experience_ids: [...]}` (parallel) or `{experience_id, problem_id}` (single) |
+| `reflections` | CRITIC | (future) | `{card_id}` |
 
 Each queue has subdirectories: `pending/`, `processing/`, `done/`, `failed/`.
 Messages are JSON files. State transitions use atomic `os.rename()` for POSIX safety.
@@ -118,8 +123,8 @@ Messages are JSON files. State transitions use atomic `os.rename()` for POSIX sa
 | Agent | Type | Description |
 |-------|------|-------------|
 | CURATOR | One-shot (pure Python) | Loads KernelBench problems from HuggingFace, enqueues to `problems` |
-| SOLVER | Queue loop | Dequeues problems, writes Triton kernels, verifies, enqueues experiences |
-| CRITIC | Queue loop | Dequeues experiences, produces reflection cards to knowledge base |
+| SOLVER | Queue loop | Dequeues problems, writes Triton kernels, verifies, enqueues experiences. Supports `--parallel N` for concurrent instances per problem. |
+| CRITIC | Queue loop | Dequeues experiences, produces reflection cards via `knowledge_create` tool. Auto-selects batch variant for multi-experience payloads. |
 | ORGANIZER | Scheduled (5 min) | Synthesizes knowledge cards from recent experiences + reflections |
 | INSIGHT_FINDER | Scheduled (10 min) | Detects cross-cutting meta-patterns across experiences |
 
@@ -148,9 +153,8 @@ The solver retrieves 7-10 knowledge cards using its full working context as the 
 
 ## Configuration
 
-- All config via **Hydra** (`hydra-core` + `omegaconf`), YAML only
-- System config: `config/config.yaml`
-- Agent configs: `agents/<name>/config.yaml` (Hydra config groups)
+- System config: `config/default.toml` + `config/hosts.yaml` + `config/tunnels.yaml`
+- Agent configs: `agents/<name>/<variant>/config.yaml`
 
 ## Agent Definitions
 
@@ -188,6 +192,8 @@ Path: `<reflection_data_root>/<reflection_env>/`
 - Tool references: `mcp__<server-key>__<tool-name>` in `allowed_tools`
 - Data models: Pydantic v2 in `agenix/storage/models.py`
 - Storage: JSON files (filesystem) + DuckDB (query) + LanceDB (vector)
-- Knowledge: `tools/knowledge/baseline/` (KnowledgeStore, LanceDB index, embedder)
+- Knowledge tools: 8 individual MCP tools in `tools/knowledge/baseline/logic.py` (search, list, get, create, revise, merge, split, archive)
+- Recall tools: 3 MCP tools in `tools/recall/baseline/logic.py` (fetch, outline, excerpt) for reading experiences/problems
 - Embeddings: `sentence-transformers` (local CPU) or remote Qwen3-Embedding-8B (GPU)
 - Agents: Independent async processes communicating via filesystem queues + shared knowledge base
+- Card lifecycle: CREATE → ACTIVE → REVISE/MERGE/SPLIT → SUPERSEDED, or ARCHIVE → ARCHIVED (see DESIGN.md)

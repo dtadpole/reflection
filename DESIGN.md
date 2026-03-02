@@ -37,7 +37,36 @@ queues and a shared knowledge base.
 | Queue | Producer | Consumer | Payload |
 |-------|----------|----------|---------|
 | `problems` | CURATOR | SOLVER | `{problem_id, title}` |
-| `experiences` | SOLVER | CRITIC | `{experience_id, problem_id}` |
+| `experiences` | SOLVER | CRITIC | `{problem_id, experience_ids: [...]}` (batch) or `{experience_id, problem_id}` (single) |
+| `reflections` | CRITIC | (future) | `{card_id}` |
+
+### Parallel Solver
+
+The solver supports `--parallel N` to run N instances per problem concurrently.
+Each thread gets its own `ClaudeRunner` (with isolated `ToolRegistry` and MCP
+servers) via a `runner_factory` callable. Knowledge retrieval is done once and
+shared across all N runs.
+
+```
+CURATOR → [problems] → SOLVER (--parallel N)
+                            │
+                   ThreadPoolExecutor(N)
+                   ╱        │        ╲
+              solver#1  solver#2  solver#3
+                 │          │         │
+              exp_1      exp_2     exp_3
+                   ╲        │        ╱
+                    collect results
+                            │
+                            ▼
+                    [experiences]
+                    payload: {problem_id, experience_ids: [...]}
+                            │
+                            ▼
+                         CRITIC
+                   (batch variant for N>1,
+                    comparative analysis)
+```
 
 ### Agent Types
 
@@ -98,11 +127,13 @@ a query engine over these files (no persistent database).
 │   │       └── failed/
 │   ├── experiences/                       ← shared across runs
 │   │   ├── solver/
-│   │   │   └── <experience_id>.jsonl      ← solver experiences
+│   │   │   └── <experience_id>.jsonl      ← solver conversation logs
 │   │   ├── critic/
 │   │   │   └── ...
 │   │   └── <agent_name>/
 │   │       └── ...
+│   ├── logs/                              ← agent log files
+│   │   └── <agent_name>_<timestamp>.log
 ├── int/
 │   └── ...
 └── test_zhenchen/
@@ -128,63 +159,94 @@ modified and it is never deleted.
 - **No deletion**: Cards are never removed from the filesystem. They are
   archived, which removes them from the vector index but preserves them
   on disk for lineage queries.
-- **Predecessor chain**: Every new card produced by revision, merge, or split
-  records `predecessor_ids` pointing to the cards it was derived from. This
-  enables walking the full ancestry chain back to the original sources.
 - **Superseded vs Archived**: Two distinct non-active statuses:
-  - `SUPERSEDED`: Card was replaced by revision, merge, or split. Always has
-    `superseded_by` pointing to the replacement card. Enables walking the
-    chain forward to find the current version.
+  - `SUPERSEDED`: Card was replaced by revision, merge, or split. The
+    lineage event on the old card records which new card replaced it.
   - `ARCHIVED`: Card was manually retired. No successor exists. Used when
     a card is no longer relevant (outdated, deprecated).
 
-## Data Lineage
+## Knowledge Card Lifecycle
 
-Every knowledge card carries an append-only lineage log that records how it was
-created and evolved. This enables tracing any card back to its source
-experiences, reflection cards, and predecessor cards.
+### Card Model
 
-### Lineage Model
+All card types (reflection, knowledge, insight) use a single unified `Card`
+model. Type-specific behavior is driven by the `card_type` string field.
 
 ```
 Card
+├── card_id: str (ULID)
+├── card_type: "reflection" | "knowledge" | "insight"
+├── title, content, code_snippet
+├── experience_ids: [str]              ← experiences that informed this card
+├── tags: [str]                        ← keyword tags for search
+├── applicability, limitations         ← when/how to apply, caveats
 ├── status: active | superseded | archived
-├── source_refs: [{id, type}]          ← typed references (experience, reflection, card)
-├── source_ids: [str]                  ← kept in sync with source_refs for compat
-├── predecessor_ids: [str]             ← cards that were inputs (merge/split/revision)
-├── superseded_by: str | null          ← quick lookup for replacement card
-└── lineage: [LineageEvent]            ← append-only event log
+├── source_refs: [{id, type}]         ← typed references (experience, card)
+└── lineage: [LineageEvent]           ← append-only event log
       ├── operation: create | revise | merge | split | supersede | archive
-      ├── timestamp, agent, run_tag
-      ├── source_refs                  ← new sources added by this event
-      ├── from_version                 ← for revise/merge: previous version
-      ├── merged_card_ids              ← for merge: cards absorbed
-      ├── split_from_card_id           ← for split: parent card
-      └── superseded_by                ← for supersede: replacement card
+      ├── timestamp, agent
+      ├── description                 ← free text (e.g. "Merged from c1, c2")
+      └── source_refs                 ← new sources added by this event
+```
+
+### Lifecycle Diagram
+
+```
+                    CREATE
+                      │
+                      ▼
+                   ACTIVE ──────────────────────────┐
+                   ╱  │  ╲                          │
+              REVISE MERGE SPLIT               ARCHIVE
+               ╱      │      ╲                      │
+              ▼       ▼       ▼                     ▼
+         SUPERSEDED  SUPERSEDED  SUPERSEDED     ARCHIVED
+              │       │       │
+              ▼       ▼       ▼
+         new ACTIVE  new ACTIVE  new ACTIVE(s)
 ```
 
 ### Operations
 
-All operations follow the immutable storage principle: existing cards are
-never modified (only their status/superseded_by fields are updated for
-archiving). New content always goes into a new card.
+All operations are in `agenix/storage/lineage.py`. Cards are never modified
+in-place — revise/merge/split always produce NEW cards and supersede originals.
 
-- **Create**: Card created from experience + reflection cards → `source_refs` populated
-- **Revise**: NEW card created with updated content. Old card superseded (`superseded_by`
-  → new card, new card `predecessor_ids` → old card). New card inherits `source_refs`
-  from old + any new sources.
-- **Merge**: NEW card created from multiple source cards. All sources superseded
-  (`superseded_by` → new card, new card `predecessor_ids` → source cards). New card gets
-  union of `source_refs`.
-- **Split**: NEW cards created from original. Original superseded. Each child gets
-  caller-specified `source_refs`. `predecessor_ids = [original_card_id]`
-- **Archive**: Card manually retired → status set to `archived`
+| Operation | Effect | Who |
+|-----------|--------|-----|
+| **CREATE** | New ACTIVE card with source_refs linking to experiences | CRITIC, ORGANIZER, INSIGHT_FINDER |
+| **REVISE** | Old → SUPERSEDED. New card inherits source_refs + lineage | ORGANIZER |
+| **MERGE** | N source cards → all SUPERSEDED. New card collects all source_refs | ORGANIZER |
+| **SPLIT** | Original → SUPERSEDED. N new ACTIVE cards, each with subset | ORGANIZER |
+| **ARCHIVE** | Card → ARCHIVED. Removed from LanceDB, kept on filesystem | Any agent |
+
+### Card Producers
+
+| Agent | Card Type | Trigger |
+|-------|-----------|---------|
+| CRITIC | reflection | Analyzes solver experiences (single or batch comparative) |
+| ORGANIZER | knowledge | Periodic synthesis from recent reflections + experiences |
+| INSIGHT_FINDER | insight | Periodic cross-cutting meta-pattern detection |
+
+### Knowledge Tools (MCP)
+
+8 individual MCP tools in `tools/knowledge/baseline/logic.py`:
+
+| Tool | Description |
+|------|-------------|
+| `knowledge_search` | Semantic search over cards via LanceDB |
+| `knowledge_list` | List cards by type, status, or tag |
+| `knowledge_get` | Fetch a single card by ID |
+| `knowledge_create` | Create a new card with lineage |
+| `knowledge_revise` | Revise a card (old → superseded, new created) |
+| `knowledge_merge` | Merge N cards into one (all → superseded) |
+| `knowledge_split` | Split one card into N (original → superseded) |
+| `knowledge_archive` | Archive a card (removed from vector index) |
 
 ### Reverse Lookups
 
 - `find_cards_by_source(source_id)` → cards referencing that source
 - `get_source_experiences(card)` → experience IDs from source_refs
-- `get_card_ancestry(card, all_cards)` → recursive predecessor chain
+- `get_source_reflections(card)` → reflection card IDs from source_refs
 
 ## Legend
 
