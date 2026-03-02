@@ -1,4 +1,10 @@
-"""Critic handler — dequeues experiences, runs critic agent, produces reflection cards."""
+"""Critic handler — dequeues experiences, runs critic agent, produces reflection cards.
+
+Supports both single-experience and batch (multi-experience) payloads.
+When the experiences queue message contains ``experience_ids`` (plural),
+the batch critic variant is loaded for comparative analysis across all
+trajectories.  A single ``experience_id`` falls back to the base variant.
+"""
 
 from __future__ import annotations
 
@@ -33,38 +39,51 @@ class CriticHandler:
         self._reflections_queue = reflections_queue
 
     def handle(self, message: QueueMessage) -> None:
-        """Process an experience message from the experiences queue."""
-        experience_id = message.payload["experience_id"]
+        """Process an experience message from the experiences queue.
+
+        Payload formats:
+        - Single:  ``{"experience_id": "...", "problem_id": "..."}``
+        - Batch:   ``{"experience_ids": ["...", ...], "problem_id": "..."}``
+        """
         problem_id = message.payload["problem_id"]
+
+        # Support both single and batch payloads
+        experience_ids: list[str] = message.payload.get("experience_ids")  # type: ignore[assignment]
+        if experience_ids is None:
+            experience_ids = [message.payload["experience_id"]]
 
         problem = self._fs.get_problem(problem_id)
         if problem is None:
             raise ValueError(f"Problem {problem_id} not found")
 
+        is_batch = len(experience_ids) > 1
         logger.info(
-            "Critiquing experience %s for problem %s",
-            experience_id,
+            "Critiquing %d experience(s) for problem %s%s",
+            len(experience_ids),
             problem.title,
+            " (batch)" if is_batch else "",
         )
 
-        # Give the critic metadata — it reads the experience via recall tools
-        # and creates reflection cards via knowledge_create tool
         input_payload = json.dumps({
             "problem_title": problem.title,
             "problem_id": problem_id,
-            "experience_id": experience_id,
+            "experience_ids": experience_ids,
         })
 
-        agent = load_agent("critic")
+        variant = "batch" if is_batch else "base"
+        agent = load_agent("critic", variant=variant)
         self._runner.run(agent, input_payload)
 
         # Cards were created by agent via knowledge_create tool calls.
-        # Find them by experience_id and enqueue to reflections queue.
-        cards = self._fs.list_cards_by_experience(experience_id)
-        for card in cards:
-            self._reflections_queue.enqueue(
-                sender="critic",
-                payload={"card_id": card.card_id},
-            )
+        # Find them across all experience_ids and enqueue to reflections queue.
+        total_cards = 0
+        for eid in experience_ids:
+            cards = self._fs.list_cards_by_experience(eid)
+            for card in cards:
+                self._reflections_queue.enqueue(
+                    sender="critic",
+                    payload={"card_id": card.card_id},
+                )
+            total_cards += len(cards)
 
-        logger.info("Critic created %d cards via tool calls", len(cards))
+        logger.info("Critic created %d cards via tool calls", total_cards)

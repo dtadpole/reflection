@@ -289,8 +289,87 @@ def agent_curator(
     typer.echo(f"Created {len(problems)} problems.")
 
 
+def _make_runner_factory(
+    config: ReflectionConfig,
+    run_tag: str,
+):
+    """Return a callable that creates an isolated ClaudeRunner with its own ToolRegistry.
+
+    Each call produces a fresh ClaudeRunner + ToolRegistry + MCP servers,
+    safe for use in a separate thread (no shared mutable state).
+    """
+    from agenix.runner import ClaudeRunner
+    from agenix.tools.loader import load_tool
+    from agenix.tools.registry import ToolRegistry
+    from tools.knowledge.baseline.store import KnowledgeStore
+
+    def factory() -> ClaudeRunner:
+        fs = FSBackend(config.storage)
+        fs.initialize()
+
+        ep_two = _find_endpoint_by_name(config, "_two")
+        ep_one = _find_endpoint_by_name(config, "_one")
+
+        # Build KnowledgeStore
+        if ep_two:
+            from tools.knowledge.baseline.embedder import RemoteEmbedder
+            from tools.knowledge.baseline.index import LanceIndex
+
+            embedder = RemoteEmbedder(config=ep_two.text_embedding, dimension=4096)
+            lance = LanceIndex(db_path=config.storage.lance_path, vector_dim=4096)
+            store = KnowledgeStore(
+                config=config, fs_backend=fs, lance_index=lance, embedder=embedder,
+            )
+        else:
+            store = KnowledgeStore(config=config, fs_backend=fs)
+        store.initialize()
+
+        registry = ToolRegistry()
+
+        # Load retriever tool
+        if ep_two:
+            from services.reranker.baseline.client import RerankerClient
+
+            rr_client = RerankerClient(ep_two.reranker)
+            retriever_def = load_tool("retriever", variant="rerank")
+            registry.register(
+                retriever_def.create_fn(
+                    knowledge_store=store, reranker_client=rr_client,
+                )
+            )
+        else:
+            retriever_def = load_tool("retriever", variant="baseline")
+            registry.register(retriever_def.create_fn(knowledge_store=store))
+
+        # Load verifier tool
+        if ep_one:
+            from services.kb_eval.baseline.client import KbEvalClient
+
+            kb_client = KbEvalClient(ep_one.kb_eval)
+            verifier_def = load_tool("verifier", variant="kb_eval")
+            registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
+
+        # Load recall tools
+        recall_def = load_tool("recall", variant="baseline")
+        registry.register(recall_def.create_fn(fs_backend=fs))
+
+        # Load knowledge tools
+        knowledge_def = load_tool("knowledge", variant="baseline")
+        registry.register(knowledge_def.create_fn(knowledge_store=store))
+
+        experiences_dir = config.storage.experiences_path
+        return ClaudeRunner(
+            tool_registry=registry, experiences_dir=experiences_dir,
+        )
+
+    return factory
+
+
 @agent_app.command("solver")
 def agent_solver(
+    parallel: int = typer.Option(
+        1, "--parallel", "-n", help="Parallel solver instances per problem.",
+    ),
     config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
     env: Optional[str] = typer.Option(None, "--env", help="Environment."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
@@ -301,7 +380,6 @@ def agent_solver(
     run_tag = _make_run_tag("solver")
     pipeline, runner, fs = _bootstrap(cfg, run_tag=run_tag)
 
-    from agenix.agents.solver_handler import SolverHandler
     from agenix.queue.fs_queue import FSQueue
 
     problems_q = FSQueue("problems", cfg.storage)
@@ -313,17 +391,31 @@ def agent_solver(
         typer.echo("No problems in queue.")
         raise typer.Exit()
 
-    handler = SolverHandler(
-        runner=runner,
-        fs_backend=fs,
-        knowledge_store=pipeline.store,
-        experiences_queue=experiences_q,
-        run_tag=run_tag,
-    )
+    if parallel > 1:
+        from agenix.agents.parallel_solver_handler import ParallelSolverHandler
+
+        handler = ParallelSolverHandler(
+            runner_factory=_make_runner_factory(cfg, run_tag),
+            fs_backend=fs,
+            knowledge_store=pipeline.store,
+            experiences_queue=experiences_q,
+            run_tag=run_tag,
+            parallel=parallel,
+        )
+    else:
+        from agenix.agents.solver_handler import SolverHandler
+
+        handler = SolverHandler(
+            runner=runner,
+            fs_backend=fs,
+            knowledge_store=pipeline.store,
+            experiences_queue=experiences_q,
+            run_tag=run_tag,
+        )
 
     typer.echo(
         f"Solving: {message.payload.get('title', message.message_id)} "
-        f"(run_tag={run_tag})"
+        f"(run_tag={run_tag}, parallel={parallel})"
     )
     try:
         handler.handle(message)

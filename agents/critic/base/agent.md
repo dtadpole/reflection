@@ -60,7 +60,7 @@ Structure the `content` field with these sections:
 A JSON object with:
 - `problem_title`: Title of the problem
 - `problem_id`: Problem identifier
-- `experience_id`: Experience identifier
+- `experience_ids`: List of experience identifiers (typically one for single-experience analysis)
 
 ## Output Format
 After reading and analyzing the experience, create 1-3 reflection cards by calling the `knowledge_create` tool for each one.
