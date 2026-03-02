@@ -83,6 +83,15 @@ class ConversationLogger:
         with open(self._path, "a", encoding="utf-8") as f:
             f.write(line)
 
+    def log_user_text(self, text: str) -> None:
+        """Log a plain-text user message (e.g. the initial prompt)."""
+        self._append({
+            "role": "user",
+            "content": text,
+            "timestamp": _now_iso(),
+            "turn": self._turn,
+        })
+
     def log_system(self, msg: Any) -> None:
         """Log a SystemMessage."""
         self._append({

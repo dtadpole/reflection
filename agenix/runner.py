@@ -121,6 +121,9 @@ class ClaudeRunner:
             options.max_turns,
         )
 
+        # Log the initial user prompt
+        conv.log_user_text(input_payload)
+
         result_message: ResultMessage | None = None
         turn = 0
         async for message in query(prompt=input_payload, options=options):
