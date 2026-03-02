@@ -158,27 +158,10 @@ class TestReflectionCard:
             title="DP Reflection",
             content="Dynamic programming works by breaking problems into subproblems",
             experience_ids=["e1"],
-            reflection_confidence=0.8,
-            supporting_steps=[0, 2, 4],
         )
         assert r.card_type == "reflection"
-        assert r.reflection_confidence == 0.8
-        assert len(r.supporting_steps) == 3
         assert r.experience_ids == ["e1"]
         assert r.card_id
-        assert r.version == 1
-
-    def test_confidence_bounds(self):
-        import pytest
-
-        with pytest.raises(Exception):
-            Card(
-                card_type="reflection",
-                title="Test",
-                content="test",
-                experience_ids=["e1"],
-                reflection_confidence=1.5,
-            )
 
     def test_card_fields(self):
         r = Card(
@@ -199,14 +182,11 @@ class TestReflectionCard:
             title="Test",
             content="Content",
             experience_ids=["e1"],
-            reflection_confidence=0.9,
-            supporting_steps=[1, 3],
         )
         json_str = r.model_dump_json()
         r2 = Card.model_validate_json(json_str)
         assert r2.card_type == "reflection"
         assert r2.experience_ids == ["e1"]
-        assert r2.reflection_confidence == 0.9
 
 
 class TestKnowledgeCard:
@@ -216,14 +196,11 @@ class TestKnowledgeCard:
             title="Binary Search Pattern",
             content="Binary search works on sorted arrays...",
             tags=["search", "arrays"],
-            domain="algorithms",
             applicability="Sorted collections, monotonic functions",
             limitations="Requires random access, sorted input",
         )
         assert kc.card_type == "knowledge"
-        assert kc.domain == "algorithms"
         assert len(kc.tags) == 2
-        assert kc.version == 1
 
     def test_json_roundtrip(self):
         kc = Card(
@@ -231,12 +208,10 @@ class TestKnowledgeCard:
             title="Test Card",
             content="Content",
             tags=["test"],
-            related_card_ids=["card-1", "card-2"],
         )
         json_str = kc.model_dump_json()
         kc2 = Card.model_validate_json(json_str)
         assert kc2.title == kc.title
-        assert kc2.related_card_ids == ["card-1", "card-2"]
 
 
 class TestInsightCard:
@@ -245,13 +220,8 @@ class TestInsightCard:
             card_type="insight",
             title="Memoization improves recursive solutions",
             content="Adding memoization to recursive solutions...",
-            hypothesis="Memoization reduces time complexity from exponential to polynomial",
-            hypothesis_status="confirmed",
-            evidence_for=["fib_trajectory_1", "dp_trajectory_3"],
-            evidence_against=[],
         )
         assert ic.card_type == "insight"
-        assert ic.hypothesis_status == "confirmed"
 
     def test_defaults(self):
         ic = Card(
@@ -259,7 +229,7 @@ class TestInsightCard:
             title="Test",
             content="Content",
         )
-        assert ic.hypothesis_status == ""
+        assert ic.card_type == "insight"
 
 
 class TestCardStatus:
@@ -297,7 +267,6 @@ class TestLineageEvent:
         event = LineageEvent(
             operation=LineageOperation.CREATE,
             agent="organizer",
-            run_tag="run_001",
             source_refs=[SourceReference(id="traj-1", type="experience")],
         )
         assert event.operation == LineageOperation.CREATE
@@ -307,21 +276,14 @@ class TestLineageEvent:
     def test_merge_event(self):
         event = LineageEvent(
             operation=LineageOperation.MERGE,
-            merged_card_ids=["card-a", "card-b"],
-            from_version=2,
+            description="Merged from card-a, card-b",
         )
-        assert event.merged_card_ids == ["card-a", "card-b"]
-        assert event.from_version == 2
+        assert event.operation == LineageOperation.MERGE
 
     def test_defaults(self):
         event = LineageEvent(operation=LineageOperation.ARCHIVE)
         assert event.agent == ""
-        assert event.run_tag == ""
         assert event.source_refs == []
-        assert event.from_version is None
-        assert event.merged_card_ids == []
-        assert event.split_from_card_id is None
-        assert event.superseded_by is None
         assert event.description == ""
 
 
@@ -331,8 +293,6 @@ class TestCardLineageFields:
         assert card.status == CardStatus.ACTIVE
         assert card.lineage == []
         assert card.source_refs == []
-        assert card.superseded_by is None
-        assert card.predecessor_ids == []
 
     def test_insight_card_has_lineage_fields(self):
         card = Card(card_type="insight", title="Test", content="Content")
@@ -346,8 +306,6 @@ class TestCardLineageFields:
             title="Test",
             content="Content",
             status=CardStatus.SUPERSEDED,
-            superseded_by="card-new",
-            predecessor_ids=["card-old"],
             source_refs=[SourceReference(id="traj-1", type="experience")],
             lineage=[
                 LineageEvent(
@@ -360,8 +318,6 @@ class TestCardLineageFields:
         json_str = card.model_dump_json()
         restored = Card.model_validate_json(json_str)
         assert restored.status == CardStatus.SUPERSEDED
-        assert restored.superseded_by == "card-new"
-        assert restored.predecessor_ids == ["card-old"]
         assert len(restored.lineage) == 1
         assert restored.lineage[0].operation == LineageOperation.CREATE
 

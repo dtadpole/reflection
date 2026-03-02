@@ -64,7 +64,6 @@ class KnowledgeStore:
             card_id=card.card_id,
             card_type=card.card_type,
             title=card.title,
-            domain=card.domain,
             tags=json.dumps(card.tags),
             vector=vector,
         )
@@ -87,7 +86,6 @@ class KnowledgeStore:
     def list_cards(
         self,
         card_type: Optional[str] = None,
-        domain: Optional[str] = None,
         include_superseded: bool = False,
         limit: int = 100,
     ) -> list[Card]:
@@ -98,7 +96,7 @@ class KnowledgeStore:
         """
         status = None if include_superseded else CardStatus.ACTIVE
         return self._fs.list_cards(
-            card_type=card_type, domain=domain, status=status, limit=limit
+            card_type=card_type, status=status, limit=limit
         )
 
     def search(
@@ -106,11 +104,10 @@ class KnowledgeStore:
         query: str,
         limit: Optional[int] = None,
         card_type: Optional[str] = None,
-        domain: Optional[str] = None,
     ) -> list[dict]:
         """Semantic search: embed query, search LanceDB, return cards with scores.
 
-        Returns list of dicts with keys: card_id, title, card_type, domain, _distance,
+        Returns list of dicts with keys: card_id, title, card_type, _distance,
         plus the full card object under 'card'.
         """
         if limit is None:
@@ -122,8 +119,6 @@ class KnowledgeStore:
         where_parts: list[str] = []
         if card_type:
             where_parts.append(f"card_type = '{card_type}'")
-        if domain:
-            where_parts.append(f"domain = '{domain}'")
         where = " AND ".join(where_parts) if where_parts else None
 
         results = self._lance.search(query_vector, limit=limit, where=where)
@@ -137,7 +132,6 @@ class KnowledgeStore:
                     "card_id": r["card_id"],
                     "title": r.get("title", ""),
                     "card_type": r.get("card_type", ""),
-                    "domain": r.get("domain", ""),
                     "_distance": r.get("_distance", 0.0),
                     "card": card,
                 })
@@ -151,6 +145,4 @@ def _card_to_text(card: Card) -> str:
         parts.append("Tags: " + ", ".join(card.tags))
     if card.applicability:
         parts.append("Applicability: " + card.applicability)
-    if card.hypothesis:
-        parts.append("Hypothesis: " + card.hypothesis)
     return "\n".join(parts)

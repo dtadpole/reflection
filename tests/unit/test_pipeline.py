@@ -71,9 +71,7 @@ CRITIC_OUTPUT = json.dumps({
         {
             "title": "Python slicing for reversal",
             "content": "Using s[::-1] is idiomatic Python for string reversal.",
-            "confidence": 0.9,
             "tags": ["python", "slicing"],
-            "supporting_steps": [0],
         },
     ],
 })
@@ -84,11 +82,9 @@ ORGANIZER_OUTPUT = json.dumps({
             "action": "create",
             "title": "String Reversal Techniques",
             "content": "Python slicing s[::-1] is the most concise way to reverse a string.",
-            "domain": "strings",
             "applicability": "When reversing sequences in Python",
             "limitations": "Python-specific idiom",
             "tags": ["python", "strings", "reversal"],
-            "related_card_ids": [],
         },
     ],
 })
@@ -98,9 +94,6 @@ INSIGHT_FINDER_OUTPUT = json.dumps({
         {
             "title": "Python idioms improve conciseness",
             "content": "The solver consistently uses Pythonic idioms when available.",
-            "hypothesis": "Using language idioms leads to more correct solutions",
-            "evidence_for": ["String reversal used s[::-1] successfully"],
-            "evidence_against": [],
             "tags": ["python", "idioms"],
         },
     ],
@@ -189,8 +182,6 @@ class TestParseReflectionCards:
         card = cards[0]
         assert card.title == "Python slicing for reversal"
         assert card.experience_ids == ["exp_123"]
-        assert card.reflection_confidence == 0.9
-        assert card.supporting_steps == [0]
 
 class TestParseKnowledgeActions:
     def test_create_action(self):
@@ -198,7 +189,6 @@ class TestParseKnowledgeActions:
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "String Reversal Techniques"
-        assert card.domain == "strings"
         assert "Python slicing" in card.content
 
     def test_skips_non_create(self):
@@ -219,7 +209,6 @@ class TestParseInsightCards:
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "Python idioms improve conciseness"
-        assert len(card.evidence_for) == 1
 
 
 # --- Pipeline Integration Tests ---

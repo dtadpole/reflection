@@ -81,7 +81,6 @@ def sample_knowledge_card():
         title="Dynamic Programming Basics",
         content="DP is about breaking problems into overlapping subproblems.",
         tags=["dp", "algorithms"],
-        domain="algorithms",
         applicability="Problems with optimal substructure",
     )
 
@@ -93,8 +92,6 @@ def sample_insight_card():
         title="Memoization vs Tabulation",
         content="Top-down memoization often uses less memory for sparse problems.",
         tags=["dp", "optimization"],
-        hypothesis="Memoization is faster for sparse inputs",
-        hypothesis_status="proposed",
     )
 
 
@@ -183,8 +180,6 @@ class TestReflectionCardCRUD:
             title="Memoization Insight",
             content="Fibonacci can be solved with memoization",
             experience_ids=[sample_experience.experience_id],
-            reflection_confidence=0.9,
-            supporting_steps=[0, 1],
         )
         backend.save_card(r)
         loaded = backend.get_card(r.card_id)
@@ -192,7 +187,6 @@ class TestReflectionCardCRUD:
         assert loaded.card_type == "reflection"
         assert loaded.content == "Fibonacci can be solved with memoization"
         assert loaded.experience_ids == [sample_experience.experience_id]
-        assert loaded.reflection_confidence == 0.9
 
     def test_list_by_type(self, backend, sample_knowledge_card, sample_experience):
         r = Card(
@@ -234,14 +228,12 @@ class TestCardCRUD:
         assert loaded is not None
         assert loaded.card_type == "knowledge"
         assert loaded.title == "Dynamic Programming Basics"
-        assert loaded.domain == "algorithms"
 
     def test_save_and_get_insight_card(self, backend, sample_insight_card):
         backend.save_card(sample_insight_card)
         loaded = backend.get_card(sample_insight_card.card_id)
         assert loaded is not None
         assert loaded.card_type == "insight"
-        assert loaded.hypothesis_status == "proposed"
 
     def test_get_nonexistent(self, backend):
         assert backend.get_card("nonexistent") is None

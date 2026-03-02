@@ -72,7 +72,7 @@ class InsightHandler:
                 for eid in recent_ids
             ]
             record_creation(
-                card, source_refs, agent="insight_finder", run_tag=self._run_tag
+                card, source_refs, agent="insight_finder"
             )
             self._store.add_card(card)
 

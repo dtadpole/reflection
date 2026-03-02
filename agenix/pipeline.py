@@ -196,7 +196,7 @@ class Pipeline:
             source_refs = [
                 SourceReference(id=experience.experience_id, type="experience"),
             ]
-            record_creation(card, source_refs, agent="critic", run_tag=run_tag)
+            record_creation(card, source_refs, agent="critic")
             self._store.add_card(card)
 
         return cards
@@ -228,7 +228,7 @@ class Pipeline:
                 SourceReference(id=rc.card_id, type="reflection")
                 for rc in reflection_cards
             ]
-            record_creation(card, source_refs, agent="organizer", run_tag=run_tag)
+            record_creation(card, source_refs, agent="organizer")
             self._store.add_card(card)
 
         return cards
@@ -264,7 +264,7 @@ class Pipeline:
                 SourceReference(id=eid, type="experience")
                 for eid in recent_ids
             ]
-            record_creation(card, source_refs, agent="insight_finder", run_tag=run_tag)
+            record_creation(card, source_refs, agent="insight_finder")
             self._store.add_card(card)
 
         return cards

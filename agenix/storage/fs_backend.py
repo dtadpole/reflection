@@ -158,7 +158,6 @@ class FSBackend:
     def list_cards(
         self,
         card_type: Optional[str] = None,
-        domain: Optional[str] = None,
         status: Optional[CardStatus] = CardStatus.ACTIVE,
         limit: int = 100,
     ) -> list[Card]:
@@ -169,8 +168,6 @@ class FSBackend:
             cards = [c for c in cards if c.status == status]
         if card_type:
             cards = [c for c in cards if c.card_type == card_type]
-        if domain:
-            cards = [c for c in cards if c.domain == domain]
         cards.sort(key=lambda c: c.updated_at, reverse=True)
         return cards[:limit]
 

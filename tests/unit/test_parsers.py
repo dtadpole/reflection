@@ -147,9 +147,7 @@ class TestParseReflectionCards:
                 {
                     "title": "Good pattern",
                     "content": "Used tiling effectively",
-                    "confidence": 0.9,
                     "tags": ["tiling"],
-                    "supporting_steps": [0, 1],
                 }
             ]
         })
@@ -157,7 +155,6 @@ class TestParseReflectionCards:
         assert len(cards) == 1
         assert cards[0].title == "Good pattern"
         assert cards[0].experience_ids == ["exp_1"]
-        assert cards[0].reflection_confidence == 0.9
 
 
     def test_markdown_fallback(self):
@@ -190,11 +187,9 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, BLOCK: tl.constexpr):
         cards = parse_reflection_cards(output, ["exp_1"])
         assert len(cards) == 2
         assert cards[0].title == "Tiling improves matmul performance"
-        assert cards[0].reflection_confidence == 0.85
         assert "@triton.jit" in cards[0].code_snippet
         assert "tiling" in cards[0].tags
         assert cards[1].title == "FP16 accumulator causes precision loss"
-        assert cards[1].reflection_confidence == 0.70
 
     def test_markdown_no_cards(self):
         """Markdown with no card sections returns empty list."""
@@ -211,18 +206,15 @@ class TestParseKnowledgeActions:
                     "action": "create",
                     "title": "Tiling Strategy",
                     "content": "Use block tiling for matmul",
-                    "domain": "triton_kernels",
                     "applicability": "Matrix multiply operations",
                     "limitations": "Small matrices may not benefit",
                     "tags": ["tiling", "matmul"],
-                    "related_card_ids": [],
                 }
             ]
         })
         cards = parse_knowledge_actions(output)
         assert len(cards) == 1
         assert cards[0].title == "Tiling Strategy"
-        assert cards[0].domain == "triton_kernels"
 
     def test_skips_non_create_actions(self):
         output = json.dumps({
@@ -249,9 +241,6 @@ class TestParseInsightCards:
                 {
                     "title": "FP16 precision issue",
                     "content": "Reduction kernels fail with FP16 accumulators",
-                    "hypothesis": "FP16 accumulation causes > 80% failure rate",
-                    "evidence_for": ["softmax failed", "layernorm failed"],
-                    "evidence_against": [],
                     "tags": ["precision", "fp16"],
                 }
             ]
@@ -259,7 +248,6 @@ class TestParseInsightCards:
         cards = parse_insight_cards(output)
         assert len(cards) == 1
         assert cards[0].title == "FP16 precision issue"
-        assert len(cards[0].evidence_for) == 2
 
     def test_empty_list(self):
         output = json.dumps({"insight_cards": []})

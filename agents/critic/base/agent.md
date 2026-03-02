@@ -34,8 +34,8 @@ After reading the full experience, analyze:
 - Be specific and actionable — reference concrete kernel code patterns
 - Recognize and praise valuable risky attempts that failed but showed promise
 - Each reflection card should capture ONE distinct observation
-- Assign a reflection_confidence score (0.0-1.0) based on evidence strength
 - Produce 1-3 reflection cards per experience
+- Always include relevant `tags` — short keywords summarizing the card's topics (e.g. "triton", "reduction", "fp16", "masking")
 - Include a `code_snippet` with the key Triton code pattern when applicable
 
 ### Content Template
@@ -72,9 +72,7 @@ CRITICAL: Your final output MUST be ONLY a JSON object — no markdown, no expla
       "title": "Short descriptive title",
       "content": "## Technique\n...\n\n## Problem Context\n...\n\n## Outcome\n...\n\n## Lesson\n...",
       "code_snippet": "@triton.jit\ndef kernel(...): ...",
-      "reflection_confidence": 0.85,
-      "tags": ["tag1", "tag2"],
-      "domain": "triton_kernels",
+      "tags": ["triton", "reduction", "tiling"],
       "applicability": "When reducing over dimensions > 1024 elements",
       "limitations": "Requires input dimension to be a multiple of BLOCK_SIZE for best performance"
     }
@@ -86,8 +84,6 @@ Fields:
 - `title`: Short descriptive title for the reflection
 - `content`: Detailed analysis using the content template
 - `code_snippet`: Key Triton code pattern (empty string if not applicable)
-- `reflection_confidence`: Float 0.0-1.0
-- `tags`: Array of relevant tags
-- `domain`: Problem domain (e.g. "triton_kernels")
+- `tags`: Array of short keyword tags summarizing the card's topics
 - `applicability`: When and how to apply this technique (free text)
 - `limitations`: Known caveats or constraints (free text)

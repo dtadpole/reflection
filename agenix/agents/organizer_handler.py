@@ -77,7 +77,7 @@ class OrganizerHandler:
                 for eid in recent_ids
             ]
             record_creation(
-                card, source_refs, agent="organizer", run_tag=self._run_tag
+                card, source_refs, agent="organizer"
             )
             self._store.add_card(card)
 

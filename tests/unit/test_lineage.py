@@ -5,7 +5,6 @@ from __future__ import annotations
 from agenix.storage.lineage import (
     archive_card,
     find_cards_by_source,
-    get_card_ancestry,
     get_source_experiences,
     get_source_reflections,
     merge_cards,
@@ -34,15 +33,13 @@ class TestRecordCreation:
             SourceReference(id="traj-1", type="experience"),
             SourceReference(id="refl-1", type="reflection"),
         ]
-        record_creation(card, refs, agent="organizer", run_tag="run_001")
+        record_creation(card, refs, agent="organizer")
 
         assert len(card.source_refs) == 2
-        assert card.source_ids == ["traj-1", "refl-1"]
         assert len(card.lineage) == 1
         event = card.lineage[0]
         assert event.operation == LineageOperation.CREATE
         assert event.agent == "organizer"
-        assert event.run_tag == "run_001"
         assert len(event.source_refs) == 2
 
     def test_status_remains_active(self):
@@ -65,19 +62,14 @@ class TestReviseCard:
             old, new,
             new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="organizer",
-            run_tag="run_002",
         )
 
         # Old card is superseded
         assert old.status == CardStatus.SUPERSEDED
-        assert old.superseded_by == new.card_id
         assert old.lineage[-1].operation == LineageOperation.SUPERSEDE
-        assert old.lineage[-1].superseded_by == new.card_id
 
         # New card inherits sources + gets new ones
-        assert new.predecessor_ids == [old.card_id]
         assert len(new.source_refs) == 2
-        assert new.source_ids == ["traj-1", "traj-2"]
         assert new.lineage[-1].operation == LineageOperation.REVISE
         assert len(new.lineage[-1].source_refs) == 1  # only new ref
 
@@ -96,7 +88,6 @@ class TestReviseCard:
 
         # Only one copy of traj-1
         assert len(new.source_refs) == 1
-        assert new.source_ids == ["traj-1"]
         # Event records no new refs (duplicate)
         assert new.lineage[-1].source_refs == []
 
@@ -112,9 +103,7 @@ class TestReviseCard:
         revise_card(old, new, agent="organizer")
 
         assert old.status == CardStatus.SUPERSEDED
-        assert new.predecessor_ids == [old.card_id]
         assert len(new.source_refs) == 1  # inherited from old
-        assert new.source_ids == ["traj-1"]
 
     def test_old_card_content_is_not_modified(self):
         """Immutability: old card's content and source_refs stay unchanged."""
@@ -156,24 +145,18 @@ class TestMergeCards:
         )
 
         merged = _make_card(title="Merged")
-        merge_cards([card_a, card_b], merged, agent="organizer", run_tag="run_003")
+        merge_cards([card_a, card_b], merged, agent="organizer")
 
         # New card gets all sources
         assert len(merged.source_refs) == 2
-        assert set(merged.source_ids) == {"traj-1", "traj-2"}
-        assert card_a.card_id in merged.predecessor_ids
-        assert card_b.card_id in merged.predecessor_ids
 
         # Merge event on new card
         merge_event = merged.lineage[-1]
         assert merge_event.operation == LineageOperation.MERGE
-        assert set(merge_event.merged_card_ids) == {card_a.card_id, card_b.card_id}
 
         # Sources are superseded
         assert card_a.status == CardStatus.SUPERSEDED
-        assert card_a.superseded_by == merged.card_id
         assert card_b.status == CardStatus.SUPERSEDED
-        assert card_b.superseded_by == merged.card_id
 
         # Supersede events on sources
         assert card_a.lineage[-1].operation == LineageOperation.SUPERSEDE
@@ -215,7 +198,6 @@ class TestSplitCard:
                 [SourceReference(id="traj-2", type="experience")],
             ],
             agent="organizer",
-            run_tag="run_004",
         )
 
         # Original is superseded
@@ -224,17 +206,13 @@ class TestSplitCard:
         assert child_a.card_id in original.lineage[-1].description
         assert child_b.card_id in original.lineage[-1].description
 
-        # Children reference original
-        assert child_a.predecessor_ids == [original.card_id]
-        assert child_b.predecessor_ids == [original.card_id]
+        # Children have split lineage events
         assert child_a.lineage[-1].operation == LineageOperation.SPLIT
-        assert child_a.lineage[-1].split_from_card_id == original.card_id
+        assert child_b.lineage[-1].operation == LineageOperation.SPLIT
 
         # Each child gets only its relevant sources
         assert get_source_experiences(child_a) == ["traj-1"]
         assert get_source_experiences(child_b) == ["traj-2"]
-        assert child_a.source_ids == ["traj-1"]
-        assert child_b.source_ids == ["traj-2"]
 
     def test_split_without_source_refs(self):
         """Without child_source_refs, no sources are copied."""
@@ -248,9 +226,7 @@ class TestSplitCard:
         child = _make_card(title="Child")
         split_card(original, [child], agent="organizer")
 
-        assert child.predecessor_ids == [original.card_id]
         assert child.source_refs == []
-        assert child.source_ids == []
 
     def test_original_content_unchanged_after_split(self):
         """Immutability: original card's content stays untouched."""
@@ -271,7 +247,7 @@ class TestSplitCard:
 class TestArchiveCard:
     def test_archive(self):
         card = _make_card()
-        archive_card(card, agent="admin", run_tag="run_005")
+        archive_card(card, agent="admin")
 
         assert card.status == CardStatus.ARCHIVED
         assert len(card.lineage) == 1
@@ -341,37 +317,6 @@ class TestGetSourceHelpers:
         assert get_source_reflections(card) == ["refl-1"]
 
 
-class TestGetCardAncestry:
-    def test_linear_ancestry(self):
-        grandparent = _make_card(title="Grandparent")
-        parent = _make_card(title="Parent")
-        parent.predecessor_ids = [grandparent.card_id]
-        child = _make_card(title="Child")
-        child.predecessor_ids = [parent.card_id]
-
-        all_cards = {
-            grandparent.card_id: grandparent,
-            parent.card_id: parent,
-            child.card_id: child,
-        }
-        ancestry = get_card_ancestry(child, all_cards)
-        assert ancestry == [parent.card_id, grandparent.card_id]
-
-    def test_merge_ancestry(self):
-        a = _make_card(title="A")
-        b = _make_card(title="B")
-        merged = _make_card(title="Merged")
-        merged.predecessor_ids = [a.card_id, b.card_id]
-
-        all_cards = {a.card_id: a, b.card_id: b, merged.card_id: merged}
-        ancestry = get_card_ancestry(merged, all_cards)
-        assert set(ancestry) == {a.card_id, b.card_id}
-
-    def test_no_predecessors(self):
-        card = _make_card()
-        assert get_card_ancestry(card, {card.card_id: card}) == []
-
-
 class TestBackwardCompat:
     def test_card_without_lineage_fields(self):
         """Cards created without lineage fields should work fine."""
@@ -384,8 +329,6 @@ class TestBackwardCompat:
         assert card.status == CardStatus.ACTIVE
         assert card.lineage == []
         assert card.source_refs == []
-        assert card.superseded_by is None
-        assert card.predecessor_ids == []
 
     def test_json_roundtrip_with_lineage(self):
         card = _make_card()
@@ -393,7 +336,6 @@ class TestBackwardCompat:
             card,
             [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
-            run_tag="run_001",
         )
 
         # Revise into a new card
@@ -410,15 +352,12 @@ class TestBackwardCompat:
 
         assert len(restored.lineage) == 1
         assert len(restored.source_refs) == 2
-        assert restored.source_ids == ["traj-1", "traj-2"]
         assert restored.lineage[0].operation == LineageOperation.REVISE
-        assert restored.predecessor_ids == [card.card_id]
 
         # Roundtrip the superseded card
         json_old = card.model_dump_json()
         restored_old = Card.model_validate_json(json_old)
         assert restored_old.status == CardStatus.SUPERSEDED
-        assert restored_old.superseded_by == new.card_id
 
 
 class TestImmutability:
@@ -460,7 +399,7 @@ class TestImmutability:
         assert len(supersede_events) == 1
 
     def test_revision_chain_preserves_full_lineage(self):
-        """Chain of revisions: A → B → C, each is a distinct card."""
+        """Chain of revisions: A -> B -> C, each is a distinct card."""
         card_a = _make_card(title="V1")
         record_creation(
             card_a,
@@ -485,18 +424,10 @@ class TestImmutability:
         # All three are distinct cards
         assert len({card_a.card_id, card_b.card_id, card_c.card_id}) == 3
 
-        # A and B are archived, C is active
+        # A and B are superseded, C is active
         assert card_a.status == CardStatus.SUPERSEDED
         assert card_b.status == CardStatus.SUPERSEDED
         assert card_c.status == CardStatus.ACTIVE
-
-        # C traces back through the full chain
-        all_cards = {
-            c.card_id: c for c in [card_a, card_b, card_c]
-        }
-        ancestry = get_card_ancestry(card_c, all_cards)
-        assert card_b.card_id in ancestry
-        assert card_a.card_id in ancestry
 
         # C has all experiences
         assert set(get_source_experiences(card_c)) == {"traj-1", "traj-2", "traj-3"}
@@ -507,13 +438,12 @@ class TestTraceability:
     through chains of lineage operations."""
 
     def test_create_then_revise_preserves_all_experiences(self):
-        """Create from traj-1, revise with traj-2 → both traceable on new card."""
+        """Create from traj-1, revise with traj-2 -> both traceable on new card."""
         old = _make_card()
         record_creation(
             old,
             [SourceReference(id="traj-1", type="experience")],
             agent="critic",
-            run_tag="run_001",
         )
 
         new = _make_card()
@@ -521,14 +451,13 @@ class TestTraceability:
             old, new,
             new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="critic",
-            run_tag="run_002",
         )
 
         trajs = get_source_experiences(new)
         assert trajs == ["traj-1", "traj-2"]
 
     def test_merge_preserves_all_source_experiences(self):
-        """Card A from traj-1, Card B from traj-2, merge → new card traces to both."""
+        """Card A from traj-1, Card B from traj-2, merge -> new card traces to both."""
         card_a = _make_card(title="A")
         record_creation(
             card_a,
@@ -544,7 +473,7 @@ class TestTraceability:
         )
 
         merged = _make_card(title="Merged")
-        merge_cards([card_a, card_b], merged, agent="organizer", run_tag="run_003")
+        merge_cards([card_a, card_b], merged, agent="organizer")
 
         # Merged card traces back to both experiences
         trajs = get_source_experiences(merged)
@@ -617,18 +546,8 @@ class TestTraceability:
         assert get_source_experiences(child_d) == ["traj-1"]
         assert get_source_experiences(child_e) == ["traj-2"]
 
-        # Ancestry chain: D → merged → A, B
-        all_cards = {
-            c.card_id: c
-            for c in [card_a, card_b, merged, child_d, child_e]
-        }
-        ancestry_d = get_card_ancestry(child_d, all_cards)
-        assert merged.card_id in ancestry_d
-        assert card_a.card_id in ancestry_d
-        assert card_b.card_id in ancestry_d
-
     def test_revision_after_merge_adds_new_experience(self):
-        """Merge A+B into C, then revise C → new card has all 3 experiences."""
+        """Merge A+B into C, then revise C -> new card has all 3 experiences."""
         card_a = _make_card(title="A")
         record_creation(
             card_a,

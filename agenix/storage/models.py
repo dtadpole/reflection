@@ -122,13 +122,8 @@ class LineageEvent(BaseModel):
     operation: LineageOperation
     timestamp: datetime = Field(default_factory=_now)
     agent: str = ""
-    run_tag: str = ""
+    description: str = ""  # Free text, includes related card IDs when relevant
     source_refs: list[SourceReference] = Field(default_factory=list)
-    from_version: Optional[int] = None
-    merged_card_ids: list[str] = Field(default_factory=list)
-    split_from_card_id: Optional[str] = None
-    superseded_by: Optional[str] = None
-    description: str = ""
 
 
 class Card(BaseModel):
@@ -146,31 +141,15 @@ class Card(BaseModel):
     code_snippet: str = ""
     experience_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
-    source_ids: list[str] = Field(default_factory=list)
 
     # Applicability
-    domain: str = "general"
     applicability: str = ""  # When/how to apply (free text)
     limitations: str = ""  # Known caveats or constraints (free text)
 
-    # Insight-specific (optional)
-    hypothesis: str = ""
-    hypothesis_status: str = ""  # "proposed", "confirmed", "refuted", etc.
-    evidence_for: list[str] = Field(default_factory=list)
-    evidence_against: list[str] = Field(default_factory=list)
-
-    # Reflection-specific (optional)
-    reflection_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    supporting_steps: list[int] = Field(default_factory=list)
-
     # Lifecycle
-    version: int = 1
     status: CardStatus = CardStatus.ACTIVE
-    lineage: list[LineageEvent] = Field(default_factory=list)
     source_refs: list[SourceReference] = Field(default_factory=list)
-    superseded_by: Optional[str] = None
-    predecessor_ids: list[str] = Field(default_factory=list)
-    related_card_ids: list[str] = Field(default_factory=list)
+    lineage: list[LineageEvent] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

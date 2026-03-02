@@ -137,11 +137,7 @@ def _parse_reflection_cards_json(
             content=rc["content"],
             code_snippet=rc.get("code_snippet", ""),
             experience_ids=experience_ids[:3],
-            domain=rc.get("domain", "general"),
-            reflection_confidence=rc.get("reflection_confidence", rc.get("confidence", 0.5)),
             tags=rc.get("tags", []),
-            supporting_steps=rc.get("supporting_steps", []),
-
             applicability=rc.get("applicability", ""),
             limitations=rc.get("limitations", ""),
         ))
@@ -183,14 +179,6 @@ def _parse_reflection_cards_markdown(
         )
         code_snippet = code_match.group(1).strip() if code_match else ""
 
-        # Confidence: look for **Confidence:** N.NN
-        conf_match = re.search(
-            r"\*\*Confidence[:\*]*\s*(\d+\.?\d*)",
-            section,
-        )
-        confidence = float(conf_match.group(1)) if conf_match else 0.5
-        confidence = max(0.0, min(1.0, confidence))
-
         # Content: everything except the title line
         content = "\n".join(lines[1:]).strip()
 
@@ -210,8 +198,6 @@ def _parse_reflection_cards_markdown(
             content=content,
             code_snippet=code_snippet,
             experience_ids=experience_ids[:3],
-            domain="triton_kernels",
-            reflection_confidence=confidence,
             tags=tags,
         ))
     return cards
@@ -248,11 +234,9 @@ def parse_knowledge_actions(
             content=action["content"],
             code_snippet=action.get("code_snippet", ""),
             experience_ids=(experience_ids or [])[:3],
-            domain=action.get("domain", "general"),
             applicability=action.get("applicability", ""),
             limitations=action.get("limitations", ""),
             tags=action.get("tags", []),
-            related_card_ids=action.get("related_card_ids", []),
         ))
     return cards
 
@@ -270,10 +254,6 @@ def parse_insight_cards(
             content=ic["content"],
             code_snippet=ic.get("code_snippet", ""),
             experience_ids=(experience_ids or [])[:3],
-            domain=ic.get("domain", "general"),
-            hypothesis=ic.get("hypothesis", ""),
-            evidence_for=ic.get("evidence_for", []),
-            evidence_against=ic.get("evidence_against", []),
             tags=ic.get("tags", []),
             applicability=ic.get("applicability", ""),
             limitations=ic.get("limitations", ""),

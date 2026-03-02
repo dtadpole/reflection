@@ -67,11 +67,9 @@ A JSON object with:
     - `title`: Card title
     - `content`: Detailed knowledge content using the content template
     - `code_snippet`: Working Triton code example demonstrating the technique
-    - `domain`: "triton_kernels"
     - `applicability`: When this knowledge applies (free text, 1-2 sentences)
     - `limitations`: Known caveats or constraints (free text, 1-2 sentences)
-    - `tags`: Array of tags
-    - `related_card_ids`: IDs of related existing cards (if any)
+    - `tags`: Array of short keyword tags
   - For "revise":
     - `card_id`: ID of the existing card to revise
     - `title`: Updated title
@@ -85,7 +83,6 @@ A JSON object with:
     - `title`: Merged card title
     - `content`: Merged content using the content template
     - `code_snippet`: Best code example from the merged cards
-    - `domain`: Domain
     - `applicability`: Combined applicability
     - `limitations`: Combined limitations
     - `tags`: Combined tags
@@ -105,7 +102,6 @@ Input:
       "title": "Fusing GeLU + Dropout reduces memory bandwidth",
       "content": "## Technique\nFused GeLU and dropout into a single Triton kernel pass.\n\n## Problem Context\nSequential elementwise ops (GeLU then dropout) on large tensors.\n\n## Outcome\nEliminated intermediate tensor write/read, 1.8x speedup over separate kernels.\n\n## Lesson\nAlways fuse sequential elementwise ops — the bandwidth savings are substantial.",
       "code_snippet": "@triton.jit\ndef fused_gelu_dropout(x_ptr, out_ptr, p, seed, n, BLOCK: tl.constexpr):\n    ...",
-      "reflection_confidence": 0.9,
       "tags": ["fusion", "gelu", "dropout"]
     }
   ]
@@ -121,11 +117,9 @@ Output:
       "title": "Fusing elementwise ops to reduce memory bandwidth",
       "content": "## Technique\nFuse chains of elementwise operations into a single Triton kernel to eliminate intermediate global memory round-trips.\n\n## When to Use\nAny chain of 2+ elementwise operations (activation + dropout, normalization + activation, bias + activation, etc.) where intermediate tensors are not needed by other consumers.\n\n## Implementation\n1. Write a single @triton.jit kernel that loads input once\n2. Apply all operations in sequence using register-resident values\n3. Write only the final output to global memory\n4. For operations needing randomness (dropout), pass seed and use tl.rand\n5. Use triton.autotune to find optimal BLOCK_SIZE\n\n## Performance Impact\n1.5-3x speedup for 2-op fusion, scaling with number of fused ops. The gain is proportional to memory bandwidth saved (one fewer global read+write per fused op).\n\n## Pitfalls\nFusion increases register pressure. For very long chains (5+ ops), the kernel may spill to local memory, negating bandwidth savings. Profile with different BLOCK_SIZE values to detect spilling.",
       "code_snippet": "@triton.jit\ndef fused_elementwise(x_ptr, out_ptr, n, BLOCK: tl.constexpr):\n    pid = tl.program_id(0)\n    offs = pid * BLOCK + tl.arange(0, BLOCK)\n    mask = offs < n\n    x = tl.load(x_ptr + offs, mask=mask)\n    # Fuse operations in registers\n    x = gelu(x)  # op 1\n    x = dropout(x, p=0.1)  # op 2\n    tl.store(out_ptr + offs, x, mask=mask)",
-      "domain": "triton_kernels",
       "applicability": "Any chain of 2+ elementwise operations where intermediate tensors are not needed elsewhere.",
       "limitations": "Fusion increases register pressure. For very long chains (5+ ops), may spill to local memory. Not applicable when intermediate results are needed by other operations.",
-      "tags": ["fusion", "elementwise", "memory_bandwidth", "gelu", "dropout", "triton_optimization"],
-      "related_card_ids": []
+      "tags": ["fusion", "elementwise", "memory_bandwidth", "gelu", "dropout", "triton_optimization"]
     }
   ]
 }

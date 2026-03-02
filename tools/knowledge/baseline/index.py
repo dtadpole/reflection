@@ -17,7 +17,6 @@ def _cards_schema(vector_dim: int) -> pa.Schema:
         pa.field("card_id", pa.utf8()),
         pa.field("card_type", pa.utf8()),
         pa.field("title", pa.utf8()),
-        pa.field("domain", pa.utf8()),
         pa.field("tags", pa.utf8()),
         pa.field("vector", pa.list_(pa.float32(), vector_dim)),
     ])
@@ -60,7 +59,6 @@ class LanceIndex:
         card_id: str,
         card_type: str,
         title: str,
-        domain: str,
         tags: str,
         vector: np.ndarray | list[float],
     ) -> None:
@@ -71,7 +69,6 @@ class LanceIndex:
             "card_id": card_id,
             "card_type": card_type,
             "title": title,
-            "domain": domain,
             "tags": tags,
             "vector": vector,
         }])
