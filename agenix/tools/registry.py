@@ -13,9 +13,13 @@ class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, SdkMcpTool[Any]] = {}
 
-    def register(self, tool: SdkMcpTool[Any]) -> None:
-        """Register a tool by its name."""
-        self._tools[tool.name] = tool
+    def register(self, tool: SdkMcpTool[Any] | list[SdkMcpTool[Any]]) -> None:
+        """Register one or more tools by name."""
+        if isinstance(tool, list):
+            for t in tool:
+                self._tools[t.name] = t
+        else:
+            self._tools[tool.name] = tool
 
     def get(self, name: str) -> SdkMcpTool[Any]:
         """Get a registered tool by name."""

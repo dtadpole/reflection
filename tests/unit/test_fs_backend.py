@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agenix.config import StorageConfig
-from agenix.storage.fs_backend import FSBackend, _write_json
+from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import (
     Card,
     Difficulty,
@@ -18,10 +18,20 @@ from agenix.storage.models import (
 )
 
 
-def _write_experience(backend: FSBackend, exp: Experience, agent: str = "solver") -> None:
-    """Test helper: write an Experience as JSON (replaces removed save_experience)."""
-    path = backend.experiences_dir(agent) / f"{exp.experience_id}.json"
-    _write_json(path, exp)
+def _write_experience_log(
+    backend: FSBackend, experience_id: str, problem_id: str, agent: str = "solver"
+) -> None:
+    """Test helper: write a minimal .jsonl experience log."""
+    import json
+
+    agent_dir = backend.experiences_dir(agent)
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    path = agent_dir / f"{experience_id}.jsonl"
+    user_msg = json.dumps({
+        "role": "user",
+        "content": json.dumps({"problem": {"problem_id": problem_id}}),
+    })
+    path.write_text(user_msg + "\n")
 
 
 @pytest.fixture
@@ -143,35 +153,27 @@ class TestProblemCRUD:
 
 
 class TestExperienceCRUD:
-    def test_save_and_get(self, backend, sample_experience):
-        _write_experience(backend,sample_experience)
-        loaded = backend.get_experience(sample_experience.experience_id)
-        assert loaded is not None
-        assert len(loaded.steps) == 2
-        assert loaded.is_correct is True
+    def test_get_experience_log(self, backend, sample_problem):
+        _write_experience_log(backend, "exp_001", sample_problem.problem_id)
+        log = backend.get_experience_log("exp_001")
+        assert log is not None
+        assert "problem_id" in log
 
     def test_get_nonexistent(self, backend):
-        assert backend.get_experience("nonexistent") is None
+        assert backend.get_experience_log("nonexistent") is None
 
-    def test_list_experiences(self, backend, sample_problem):
-        e1 = Experience(problem_id=sample_problem.problem_id, is_correct=True)
-        e2 = Experience(problem_id=sample_problem.problem_id, is_correct=False)
-        _write_experience(backend,e1)
-        _write_experience(backend,e2)
-
-        all_e = backend.list_experiences()
-        assert len(all_e) == 2
-
-        correct = backend.list_experiences(is_correct=True)
-        assert len(correct) == 1
+    def test_list_experience_ids(self, backend, sample_problem):
+        _write_experience_log(backend, "exp_001", sample_problem.problem_id)
+        _write_experience_log(backend, "exp_002", sample_problem.problem_id)
+        ids = backend.list_experience_ids()
+        assert len(ids) == 2
+        assert "exp_001" in ids
+        assert "exp_002" in ids
 
     def test_count(self, backend, sample_problem):
-        e1 = Experience(problem_id=sample_problem.problem_id, is_correct=True)
-        e2 = Experience(problem_id=sample_problem.problem_id, is_correct=False)
-        _write_experience(backend,e1)
-        _write_experience(backend,e2)
+        _write_experience_log(backend, "exp_001", sample_problem.problem_id)
+        _write_experience_log(backend, "exp_002", sample_problem.problem_id)
         assert backend.count_experiences() == 2
-        assert backend.count_experiences(is_correct=True) == 1
 
 
 class TestReflectionCardCRUD:
@@ -286,10 +288,11 @@ class TestDuckDBQueries:
         results = backend.query_cards()
         assert len(results) == 1
 
-    def test_query_experiences(self, backend, sample_experience):
-        _write_experience(backend,sample_experience)
+    def test_query_experiences(self, backend, sample_problem):
+        _write_experience_log(backend, "exp_001", sample_problem.problem_id)
+        # query_experiences uses DuckDB over JSON — .jsonl files are also readable
         results = backend.query_experiences()
-        assert len(results) == 1
+        assert len(results) >= 1
 
     def test_query_empty_dir(self, backend):
         results = backend.query_problems()

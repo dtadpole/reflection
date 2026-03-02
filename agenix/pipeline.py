@@ -238,21 +238,22 @@ class Pipeline:
     ) -> list[Card]:
         agent = load_agent("insight_finder")
 
-        recent = self._fs.list_experiences(limit=20)
-        if not recent:
+        recent_ids = self._fs.list_experience_ids(limit=20)
+        if not recent_ids:
             return []
 
-        experiences_data = []
-        for e in recent:
-            problem = self._fs.get_problem(e.problem_id)
-            experiences_data.append({
-                "problem": json.loads(problem.model_dump_json()) if problem else {},
-                "experience": json.loads(e.model_dump_json()),
-            })
+        experience_logs = []
+        for eid in recent_ids:
+            log_text = self._fs.get_experience_log(eid)
+            if log_text:
+                experience_logs.append({
+                    "experience_id": eid,
+                    "conversation_log": log_text,
+                })
 
         input_payload = json.dumps({
-            "experiences": experiences_data,
-            "batch_info": {"total_count": len(recent)},
+            "experiences": experience_logs,
+            "batch_info": {"total_count": len(experience_logs)},
         })
 
         result = self._runner.run(agent, input_payload)
@@ -260,8 +261,8 @@ class Pipeline:
 
         for card in cards:
             source_refs = [
-                SourceReference(id=e.experience_id, type="experience")
-                for e in recent
+                SourceReference(id=eid, type="experience")
+                for eid in recent_ids
             ]
             record_creation(card, source_refs, agent="insight_finder", run_tag=run_tag)
             self._store.add_card(card)

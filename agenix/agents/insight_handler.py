@@ -1,4 +1,4 @@
-"""Insight finder handler — periodic cross-cutting pattern detection."""
+"""Insight finder handler — periodic meta-pattern detection across experiences."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class InsightHandler:
     """Scheduled handler for the insight finder agent.
 
-    Analyzes recent experiences to detect cross-cutting meta-patterns
-    and produces insight cards.
+    Reads recent experience logs and produces insight cards that capture
+    cross-cutting meta-patterns.
     """
 
     def __init__(
@@ -40,35 +40,36 @@ class InsightHandler:
 
     def handle(self) -> None:
         """Run one insight finder cycle over recent experiences."""
-        recent = self._fs.list_experiences(limit=self._recent_limit)
-        if not recent:
+        recent_ids = self._fs.list_experience_ids(limit=self._recent_limit)
+        if not recent_ids:
             logger.info("Insight finder: no experiences to process")
             return
 
-        experiences_data = []
-        for e in recent:
-            problem = self._fs.get_problem(e.problem_id)
-            experiences_data.append({
-                "problem": json.loads(problem.model_dump_json()) if problem else {},
-                "experience": json.loads(e.model_dump_json()),
-            })
+        # Gather raw experience logs
+        experience_logs = []
+        for eid in recent_ids:
+            log_text = self._fs.get_experience_log(eid)
+            if log_text:
+                experience_logs.append({
+                    "experience_id": eid,
+                    "conversation_log": log_text,
+                })
 
         input_payload = json.dumps({
-            "experiences": experiences_data,
+            "experiences": experience_logs,
             "batch_info": {
-                "total_count": len(recent),
+                "total_count": len(experience_logs),
             },
         })
 
         agent = load_agent("insight_finder")
         result = self._runner.run(agent, input_payload)
-        exp_ids = [e.experience_id for e in recent[:3]]
-        cards = parse_insight_cards(result.output, experience_ids=exp_ids)
+        cards = parse_insight_cards(result.output)
 
         for card in cards:
             source_refs = [
-                SourceReference(id=e.experience_id, type="experience")
-                for e in recent
+                SourceReference(id=eid, type="experience")
+                for eid in recent_ids
             ]
             record_creation(
                 card, source_refs, agent="insight_finder", run_tag=self._run_tag

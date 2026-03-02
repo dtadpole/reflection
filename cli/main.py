@@ -119,7 +119,7 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
         verifier_def = load_tool("verifier", variant="kb_eval")
         registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
 
-    # Load recall tool — filesystem lookup for problems, experiences, cards
+    # Load recall tools (recall + excerpt) — filesystem entity lookup & JSONL row reader
     recall_def = load_tool("recall", variant="baseline")
     registry.register(recall_def.create_fn(fs_backend=fs))
 
@@ -612,28 +612,22 @@ def cards_search(
 
 @experiences_app.command("list")
 def experiences_list(
-    correct: Optional[bool] = typer.Option(None, "--correct", help="Filter by correctness."),
     config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
     env: Optional[str] = typer.Option(None, "--env", help="Environment."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
-    """List agent experiences."""
+    """List agent experiences (conversation logs)."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
     fs = FSBackend(cfg.storage)
 
-    experiences = fs.list_experiences(is_correct=correct)
-    if not experiences:
+    ids = fs.list_experience_ids()
+    if not ids:
         typer.echo("No experiences found.")
         return
 
-    for e in experiences:
-        status = "correct" if e.is_correct else "incorrect"
-        typer.echo(
-            f"[{status:9s}] {e.experience_id}  "
-            f"problem={e.problem_id}  "
-            f"steps={len(e.steps)}"
-        )
+    for eid in ids:
+        typer.echo(eid)
 
 
 # --- Services sub-commands ---

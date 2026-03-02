@@ -23,7 +23,6 @@ from agenix.config import StorageConfig
 from agenix.storage.models import (
     Card,
     CardStatus,
-    Experience,
     Problem,
     ProblemStatus,
 )
@@ -118,34 +117,30 @@ class FSBackend:
         self.save_problem(problem)
 
     # --- Experiences ---
+    #
+    # Experiences are stored as .jsonl conversation logs written by the runner.
+    # There are no .json summary files — the .jsonl is the source of truth.
 
-    def get_experience(
+    def get_experience_log(
         self, experience_id: str, agent: str = "solver"
-    ) -> Optional[Experience]:
-        path = self.experiences_dir(agent) / f"{experience_id}.json"
+    ) -> str | None:
+        """Read the raw .jsonl conversation log for an experience."""
+        path = self.experiences_dir(agent) / f"{experience_id}.jsonl"
         if not path.exists():
             return None
-        return _read_json(path, Experience)
+        return path.read_text()
 
-    def list_experiences(
+    def list_experience_ids(
         self,
         agent: str = "solver",
-        is_correct: Optional[bool] = None,
         limit: int = 100,
-    ) -> list[Experience]:
-        """List experiences for a given agent."""
+    ) -> list[str]:
+        """List experience IDs (from .jsonl filenames) for a given agent."""
         search_dir = self.experiences_dir(agent)
         if not search_dir.exists():
             return []
-
-        experiences: list[Experience] = []
-        for f in sorted(search_dir.glob("*.json")):
-            experiences.append(_read_json(f, Experience))
-
-        if is_correct is not None:
-            experiences = [e for e in experiences if e.is_correct == is_correct]
-        experiences.sort(key=lambda e: e.created_at, reverse=True)
-        return experiences[:limit]
+        ids = sorted(f.stem for f in search_dir.glob("*.jsonl"))
+        return ids[:limit]
 
     # --- Cards ---
 
@@ -281,9 +276,5 @@ class FSBackend:
             ])
         return len(list(self.cards_dir.glob("*.json")))
 
-    def count_experiences(
-        self, is_correct: Optional[bool] = None, agent: str = "solver"
-    ) -> int:
-        return len(self.list_experiences(
-            agent=agent, is_correct=is_correct, limit=999999
-        ))
+    def count_experiences(self, agent: str = "solver") -> int:
+        return len(self.list_experience_ids(agent=agent, limit=999999))
