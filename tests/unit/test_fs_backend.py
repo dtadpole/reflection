@@ -9,6 +9,8 @@ from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import (
     CardType,
     Difficulty,
+    Experience,
+    ExperienceStep,
     HypothesisStatus,
     InsightCard,
     KnowledgeCard,
@@ -18,8 +20,6 @@ from agenix.storage.models import (
     ReflectionCategory,
     StepType,
     TestCase,
-    Trajectory,
-    TrajectoryStep,
 )
 
 
@@ -43,14 +43,14 @@ def sample_problem():
 
 
 @pytest.fixture
-def sample_trajectory(sample_problem):
-    return Trajectory(
+def sample_experience(sample_problem):
+    return Experience(
         problem_id=sample_problem.problem_id,
         steps=[
-            TrajectoryStep(
+            ExperienceStep(
                 step_index=0, step_type=StepType.THOUGHT, content="Think about it"
             ),
-            TrajectoryStep(
+            ExperienceStep(
                 step_index=1,
                 step_type=StepType.ACTION,
                 content="Write code",
@@ -139,58 +139,44 @@ class TestProblemCRUD:
         assert backend.count_problems(status=ProblemStatus.SOLVED) == 0
 
 
-class TestTrajectoryCRUD:
-    def test_save_and_get(self, backend, sample_trajectory):
-        run_tag = "run_test"
-        backend.save_trajectory(sample_trajectory, run_tag)
-        loaded = backend.get_trajectory(
-            sample_trajectory.trajectory_id, run_tag
-        )
+class TestExperienceCRUD:
+    def test_save_and_get(self, backend, sample_experience):
+        backend.save_experience(sample_experience)
+        loaded = backend.get_experience(sample_experience.experience_id)
         assert loaded is not None
         assert len(loaded.steps) == 2
         assert loaded.is_correct is True
 
     def test_get_nonexistent(self, backend):
-        assert backend.get_trajectory("nonexistent", "run_test") is None
+        assert backend.get_experience("nonexistent") is None
 
-    def test_list_trajectories(self, backend, sample_problem):
-        run_tag = "run_test"
-        t1 = Trajectory(problem_id=sample_problem.problem_id, is_correct=True)
-        t2 = Trajectory(problem_id=sample_problem.problem_id, is_correct=False)
-        backend.save_trajectory(t1, run_tag)
-        backend.save_trajectory(t2, run_tag)
+    def test_list_experiences(self, backend, sample_problem):
+        e1 = Experience(problem_id=sample_problem.problem_id, is_correct=True)
+        e2 = Experience(problem_id=sample_problem.problem_id, is_correct=False)
+        backend.save_experience(e1)
+        backend.save_experience(e2)
 
-        all_t = backend.list_trajectories(run_tag=run_tag)
-        assert len(all_t) == 2
+        all_e = backend.list_experiences()
+        assert len(all_e) == 2
 
-        correct = backend.list_trajectories(run_tag=run_tag, is_correct=True)
+        correct = backend.list_experiences(is_correct=True)
         assert len(correct) == 1
 
-    def test_list_across_runs(self, backend, sample_problem):
-        t1 = Trajectory(problem_id=sample_problem.problem_id, is_correct=True)
-        t2 = Trajectory(problem_id=sample_problem.problem_id, is_correct=False)
-        backend.save_trajectory(t1, "run_20260228_100000")
-        backend.save_trajectory(t2, "run_20260228_110000")
-
-        all_t = backend.list_trajectories()
-        assert len(all_t) == 2
-
     def test_count(self, backend, sample_problem):
-        run_tag = "run_test"
-        t1 = Trajectory(problem_id=sample_problem.problem_id, is_correct=True)
-        t2 = Trajectory(problem_id=sample_problem.problem_id, is_correct=False)
-        backend.save_trajectory(t1, run_tag)
-        backend.save_trajectory(t2, run_tag)
-        assert backend.count_trajectories() == 2
-        assert backend.count_trajectories(is_correct=True) == 1
+        e1 = Experience(problem_id=sample_problem.problem_id, is_correct=True)
+        e2 = Experience(problem_id=sample_problem.problem_id, is_correct=False)
+        backend.save_experience(e1)
+        backend.save_experience(e2)
+        assert backend.count_experiences() == 2
+        assert backend.count_experiences(is_correct=True) == 1
 
 
 class TestReflectionCardCRUD:
-    def test_save_and_get(self, backend, sample_trajectory):
+    def test_save_and_get(self, backend, sample_experience):
         r = ReflectionCard(
             title="Memoization Insight",
             content="Fibonacci can be solved with memoization",
-            trajectory_id=sample_trajectory.trajectory_id,
+            experience_id=sample_experience.experience_id,
             category=ReflectionCategory.ALGORITHM,
             confidence=0.9,
             supporting_steps=[0, 1],
@@ -200,14 +186,14 @@ class TestReflectionCardCRUD:
         assert loaded is not None
         assert isinstance(loaded, ReflectionCard)
         assert loaded.content == "Fibonacci can be solved with memoization"
-        assert loaded.trajectory_id == sample_trajectory.trajectory_id
+        assert loaded.experience_id == sample_experience.experience_id
         assert loaded.category == ReflectionCategory.ALGORITHM
 
-    def test_list_by_type(self, backend, sample_knowledge_card, sample_trajectory):
+    def test_list_by_type(self, backend, sample_knowledge_card, sample_experience):
         r = ReflectionCard(
             title="Reflection",
             content="Content",
-            trajectory_id=sample_trajectory.trajectory_id,
+            experience_id=sample_experience.experience_id,
         )
         backend.save_card(sample_knowledge_card)
         backend.save_card(r)
@@ -215,20 +201,20 @@ class TestReflectionCardCRUD:
         assert len(reflections) == 1
         assert isinstance(reflections[0], ReflectionCard)
 
-    def test_list_by_trajectory(self, backend, sample_trajectory):
+    def test_list_by_experience(self, backend, sample_experience):
         r1 = ReflectionCard(
             title="R1",
             content="C1",
-            trajectory_id=sample_trajectory.trajectory_id,
+            experience_id=sample_experience.experience_id,
         )
         r2 = ReflectionCard(
             title="R2",
             content="C2",
-            trajectory_id="other-traj",
+            experience_id="other-exp",
         )
         backend.save_card(r1)
         backend.save_card(r2)
-        found = backend.list_cards_by_trajectory(sample_trajectory.trajectory_id)
+        found = backend.list_cards_by_experience(sample_experience.experience_id)
         assert len(found) == 1
         assert found[0].card_id == r1.card_id
 
@@ -293,9 +279,9 @@ class TestDuckDBQueries:
         results = backend.query_cards()
         assert len(results) == 1
 
-    def test_query_trajectories(self, backend, sample_trajectory):
-        backend.save_trajectory(sample_trajectory, "run_20260228_100000")
-        results = backend.query_trajectories(run_tag="run_20260228_100000")
+    def test_query_experiences(self, backend, sample_experience):
+        backend.save_experience(sample_experience)
+        results = backend.query_experiences()
         assert len(results) == 1
 
     def test_query_empty_dir(self, backend):

@@ -28,3 +28,30 @@ max_critical_time = 120
 max_timeout = 600
 code_type = "triton"
 compile_pytorch = false
+
+[orchestrator]
+shutdown_timeout = 30
+status_interval = 60
+
+[[orchestrator.agents]]
+name = "curator"
+count = 1
+options = { n = 100, levels = "level_1,level_2" }
+
+[[orchestrator.agents]]
+name = "solver"
+count = 2
+
+[[orchestrator.agents]]
+name = "critic"
+count = 1
+
+[[orchestrator.agents]]
+name = "organizer"
+count = 1
+options = { interval = 300 }
+
+[[orchestrator.agents]]
+name = "insight_finder"
+count = 1
+options = { interval = 600 }

@@ -9,7 +9,7 @@ from typing import Optional
 
 import typer
 
-from agenix.config import ReflectionConfig, load_config
+from agenix.config import ReflectionConfig, load_config, make_log_path
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import CardType
 
@@ -17,14 +17,14 @@ app = typer.Typer(name="reflection", help="Self-evolving multi-agent coding syst
 agent_app = typer.Typer(help="Run individual agents.")
 queues_app = typer.Typer(help="Queue management.")
 cards_app = typer.Typer(help="Manage knowledge cards.")
-trajectories_app = typer.Typer(help="Manage solver trajectories.")
+experiences_app = typer.Typer(help="Manage agent experiences.")
 logs_app = typer.Typer(help="View execution logs.")
 services_app = typer.Typer(help="Manage remote services.")
 tunnel_app = typer.Typer(help="Manage SSH tunnels for port forwarding.")
 app.add_typer(agent_app, name="agent")
 app.add_typer(queues_app, name="queues")
 app.add_typer(cards_app, name="cards")
-app.add_typer(trajectories_app, name="trajectories")
+app.add_typer(experiences_app, name="experiences")
 app.add_typer(logs_app, name="logs")
 app.add_typer(services_app, name="services")
 services_app.add_typer(tunnel_app, name="tunnel")
@@ -41,9 +41,12 @@ def _load_config(
     return cfg
 
 
-def _make_run_tag() -> str:
-    """Generate a run tag from the current timestamp."""
-    return "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+def _make_run_tag(agent_name: str = "run") -> str:
+    """Generate a run tag from the current timestamp.
+
+    Format: <agent_name>_YYYYMMDD_HHMMSS (e.g. solver_20260302_004300).
+    """
+    return agent_name + "_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def _find_endpoint_by_name(config: ReflectionConfig, name: str):
@@ -57,16 +60,12 @@ def _find_endpoint_by_name(config: ReflectionConfig, name: str):
 def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
     """Create all runtime objects for pipeline execution.
 
-    Returns (pipeline, runner, fs_backend, execution_log).
+    Returns (pipeline, runner, fs_backend).
 
     Endpoint wiring:
     - _one: kb_eval (verifier)
     - _two: text_embedding (RemoteEmbedder) + reranker (retriever rerank variant)
     """
-    from agenix.execution_log import (
-        NullExecutionLogger,
-        create_execution_logger,
-    )
     from agenix.pipeline import Pipeline
     from agenix.runner import ClaudeRunner
     from agenix.tools.loader import load_tool
@@ -76,11 +75,7 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
     fs = FSBackend(config.storage)
     fs.initialize()
 
-    exec_log = (
-        create_execution_logger(config.storage, run_tag)
-        if run_tag
-        else NullExecutionLogger()
-    )
+    run_dir = config.storage.run_path(run_tag) if run_tag else None
 
     ep_two = _find_endpoint_by_name(config, "_two")
     ep_one = _find_endpoint_by_name(config, "_one")
@@ -124,17 +119,40 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
         verifier_def = load_tool("verifier", variant="kb_eval")
         registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
 
-    runner = ClaudeRunner(tool_registry=registry, execution_log=exec_log)
+    runner = ClaudeRunner(tool_registry=registry, run_dir=run_dir)
     pipeline = Pipeline(
         config=config,
         runner=runner,
         knowledge_store=store,
         fs_backend=fs,
     )
-    return pipeline, runner, fs, exec_log
+    return pipeline, runner, fs
 
 
 # --- Top-level commands ---
+
+
+@app.command()
+def orchestrate(
+    config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
+    env: Optional[str] = typer.Option(None, "--env", help="Environment (prod/int/test_<user>)."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
+) -> None:
+    """Run all agents as managed subprocesses."""
+    _setup_logging(verbose)
+    cfg = _load_config(config, env)
+
+    from agenix.orchestrator import Orchestrator
+
+    orch = Orchestrator(
+        cfg.orchestrator,
+        env=cfg.storage.env,
+        config_path=str(config) if config else None,
+        verbose=verbose,
+        logs_dir=cfg.storage.logs_path,
+    )
+    exit_code = orch.run()
+    raise typer.Exit(exit_code)
 
 
 @app.command()
@@ -148,7 +166,7 @@ def run(
     _setup_logging(verbose)
     log = logging.getLogger("reflection.run")
     cfg = _load_config(config, env)
-    pipeline, _, _, _ = _bootstrap(cfg)
+    pipeline, _, _ = _bootstrap(cfg)
 
     succeeded = 0
     failed = 0
@@ -160,7 +178,7 @@ def run(
             status = "correct" if result.is_correct else "incorrect"
             typer.echo(
                 f"  Problem: {result.problem_id} | "
-                f"Trajectory: {result.trajectory_id} | "
+                f"Experience: {result.experience_id} | "
                 f"Result: {status} | "
                 f"Cards: {len(result.cards_created)}"
             )
@@ -183,7 +201,7 @@ def solve(
     """Solve a single problem using the solver agent."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
-    pipeline, _, fs, _ = _bootstrap(cfg)
+    pipeline, _, fs = _bootstrap(cfg)
 
     from agenix.storage.models import Problem
 
@@ -191,12 +209,12 @@ def solve(
     fs.save_problem(problem)
 
     run_tag = _make_run_tag()
-    trajectory = pipeline._run_solver(run_tag, problem)
+    experience = pipeline._run_solver(run_tag, problem)
 
-    typer.echo(f"Trajectory: {trajectory.trajectory_id}")
-    typer.echo(f"Correct: {trajectory.is_correct}")
-    if trajectory.code_solution:
-        typer.echo(f"Solution:\n{trajectory.code_solution}")
+    typer.echo(f"Experience: {experience.experience_id}")
+    typer.echo(f"Correct: {experience.is_correct}")
+    if experience.code_solution:
+        typer.echo(f"Solution:\n{experience.code_solution}")
 
 
 @app.command()
@@ -205,13 +223,13 @@ def status(
     env: Optional[str] = typer.Option(None, "--env", help="Environment."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
-    """Show system status: counts of problems, trajectories, and cards."""
+    """Show system status: counts of problems, experiences, and cards."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
     fs = FSBackend(cfg.storage)
 
     problems = fs.count_problems()
-    trajectories = fs.count_trajectories()
+    experiences = fs.count_experiences()
     cards_knowledge = fs.count_cards(CardType.KNOWLEDGE)
     cards_reflection = fs.count_cards(CardType.REFLECTION)
     cards_insight = fs.count_cards(CardType.INSIGHT)
@@ -219,7 +237,7 @@ def status(
     typer.echo(f"Environment: {cfg.storage.env}")
     typer.echo(f"Data root:   {cfg.storage.env_path}")
     typer.echo(f"Problems:    {problems}")
-    typer.echo(f"Trajectories: {trajectories}")
+    typer.echo(f"Experiences:  {experiences}")
     typer.echo(f"Cards:       {cards_knowledge + cards_reflection + cards_insight}")
     typer.echo(f"  Knowledge: {cards_knowledge}")
     typer.echo(f"  Reflection: {cards_reflection}")
@@ -241,8 +259,8 @@ def agent_curator(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
     """Load problems from KernelBench and enqueue them."""
-    _setup_logging(verbose)
     cfg = _load_config(config, env)
+    _setup_logging(verbose, log_file=make_log_path(cfg.storage.logs_path, "curator"))
     fs = FSBackend(cfg.storage)
     fs.initialize()
 
@@ -262,27 +280,26 @@ def agent_solver(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
     """Run the solver agent (polls problems queue)."""
-    _setup_logging(verbose)
     cfg = _load_config(config, env)
-    run_tag = _make_run_tag()
-    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
+    _setup_logging(verbose, log_file=make_log_path(cfg.storage.logs_path, "solver"))
+    run_tag = _make_run_tag("solver")
+    pipeline, runner, fs = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import QueueAgentLoop
     from agenix.agents.solver_handler import SolverHandler
     from agenix.queue.fs_queue import FSQueue
 
     problems_q = FSQueue("problems", cfg.storage)
-    trajectories_q = FSQueue("trajectories", cfg.storage)
+    experiences_q = FSQueue("experiences", cfg.storage)
 
     handler = SolverHandler(
         runner=runner,
         fs_backend=fs,
         knowledge_store=pipeline.store,
-        trajectories_queue=trajectories_q,
+        experiences_queue=experiences_q,
         run_tag=run_tag,
-        execution_log=exec_log,
     )
-    loop = QueueAgentLoop(problems_q, handler, execution_log=exec_log)
+    loop = QueueAgentLoop(problems_q, handler)
     typer.echo(f"Solver agent started (run_tag={run_tag}).")
     loop.run()
 
@@ -293,25 +310,24 @@ def agent_critic(
     env: Optional[str] = typer.Option(None, "--env", help="Environment."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
-    """Run the critic agent (polls trajectories queue)."""
-    _setup_logging(verbose)
+    """Run the critic agent (polls experiences queue)."""
     cfg = _load_config(config, env)
-    run_tag = _make_run_tag()
-    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
+    _setup_logging(verbose, log_file=make_log_path(cfg.storage.logs_path, "critic"))
+    run_tag = _make_run_tag("critic")
+    pipeline, runner, fs = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import QueueAgentLoop
     from agenix.agents.critic_handler import CriticHandler
     from agenix.queue.fs_queue import FSQueue
 
-    trajectories_q = FSQueue("trajectories", cfg.storage)
+    experiences_q = FSQueue("experiences", cfg.storage)
 
     handler = CriticHandler(
         runner=runner,
         fs_backend=fs,
         knowledge_store=pipeline.store,
-        execution_log=exec_log,
     )
-    loop = QueueAgentLoop(trajectories_q, handler, execution_log=exec_log)
+    loop = QueueAgentLoop(experiences_q, handler)
     typer.echo(f"Critic agent started (run_tag={run_tag}).")
     loop.run()
 
@@ -324,10 +340,10 @@ def agent_organizer(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
     """Run the organizer agent (periodic knowledge synthesis)."""
-    _setup_logging(verbose)
     cfg = _load_config(config, env)
-    run_tag = _make_run_tag()
-    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
+    _setup_logging(verbose, log_file=make_log_path(cfg.storage.logs_path, "organizer"))
+    run_tag = _make_run_tag("organizer")
+    pipeline, runner, fs = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import ScheduledAgentLoop
     from agenix.agents.organizer_handler import OrganizerHandler
@@ -337,9 +353,8 @@ def agent_organizer(
         fs_backend=fs,
         knowledge_store=pipeline.store,
         run_tag=run_tag,
-        execution_log=exec_log,
     )
-    loop = ScheduledAgentLoop(handler, interval=float(interval), execution_log=exec_log)
+    loop = ScheduledAgentLoop(handler, interval=float(interval))
     typer.echo(f"Organizer agent started (interval={interval}s, run_tag={run_tag}).")
     loop.run()
 
@@ -352,10 +367,10 @@ def agent_insight_finder(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
     """Run the insight finder agent (periodic meta-pattern detection)."""
-    _setup_logging(verbose)
     cfg = _load_config(config, env)
-    run_tag = _make_run_tag()
-    pipeline, runner, fs, exec_log = _bootstrap(cfg, run_tag=run_tag)
+    _setup_logging(verbose, log_file=make_log_path(cfg.storage.logs_path, "insight_finder"))
+    run_tag = _make_run_tag("insight_finder")
+    pipeline, runner, fs = _bootstrap(cfg, run_tag=run_tag)
 
     from agenix.agent_loop import ScheduledAgentLoop
     from agenix.agents.insight_handler import InsightHandler
@@ -365,11 +380,8 @@ def agent_insight_finder(
         fs_backend=fs,
         knowledge_store=pipeline.store,
         run_tag=run_tag,
-        execution_log=exec_log,
     )
-    loop = ScheduledAgentLoop(
-        handler, interval=float(interval), execution_log=exec_log,
-    )
+    loop = ScheduledAgentLoop(handler, interval=float(interval))
     typer.echo(f"Insight finder agent started (interval={interval}s, run_tag={run_tag}).")
     loop.run()
 
@@ -390,7 +402,7 @@ def queues_status(
     from agenix.queue.fs_queue import FSQueue
     from agenix.queue.models import MessageState
 
-    queue_names = ["problems", "trajectories"]
+    queue_names = ["problems", "experiences"]
     for name in queue_names:
         q = FSQueue(name, cfg.storage)
         q.initialize()
@@ -574,33 +586,32 @@ def cards_search(
         typer.echo(f"[{r['card_type']:10s}] {r['card_id']}  {r['title']}  (score={score})")
 
 
-# --- Trajectories sub-commands ---
+# --- Experiences sub-commands ---
 
 
-@trajectories_app.command("list")
-def trajectories_list(
-    run_tag: Optional[str] = typer.Option(None, "--run", help="Filter by run tag."),
+@experiences_app.command("list")
+def experiences_list(
     correct: Optional[bool] = typer.Option(None, "--correct", help="Filter by correctness."),
     config: Optional[Path] = typer.Option(None, "--config", help="Path to config TOML."),
     env: Optional[str] = typer.Option(None, "--env", help="Environment."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
-    """List solver trajectories."""
+    """List agent experiences."""
     _setup_logging(verbose)
     cfg = _load_config(config, env)
     fs = FSBackend(cfg.storage)
 
-    trajectories = fs.list_trajectories(run_tag=run_tag, is_correct=correct)
-    if not trajectories:
-        typer.echo("No trajectories found.")
+    experiences = fs.list_experiences(is_correct=correct)
+    if not experiences:
+        typer.echo("No experiences found.")
         return
 
-    for t in trajectories:
-        status = "correct" if t.is_correct else "incorrect"
+    for e in experiences:
+        status = "correct" if e.is_correct else "incorrect"
         typer.echo(
-            f"[{status:9s}] {t.trajectory_id}  "
-            f"problem={t.problem_id}  "
-            f"steps={len(t.steps)}"
+            f"[{status:9s}] {e.experience_id}  "
+            f"problem={e.problem_id}  "
+            f"steps={len(e.steps)}"
         )
 
 
@@ -1180,10 +1191,14 @@ def _find_endpoint(cfg: ReflectionConfig, name: str):
 # --- Helpers ---
 
 
-def _setup_logging(verbose: bool) -> None:
+def _setup_logging(verbose: bool, log_file: Path | None = None) -> None:
     level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+    logging.basicConfig(level=level, format=fmt, datefmt=datefmt)
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(str(log_file))
+        fh.setLevel(logging.DEBUG)  # always capture full detail to file
+        fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
+        logging.getLogger().addHandler(fh)

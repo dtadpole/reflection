@@ -9,11 +9,11 @@ import pytest
 from agenix.config import ReflectionConfig, StorageConfig
 from agenix.parsers import (
     extract_json,
+    parse_experience,
     parse_insight_cards,
     parse_knowledge_actions,
     parse_problem,
     parse_reflection_cards,
-    parse_trajectory,
 )
 from agenix.pipeline import Pipeline
 from agenix.runner import AgentResult
@@ -174,23 +174,23 @@ class TestParseProblem:
         assert problem.test_cases[1].expected_output == "[1, 2, 3]"
 
 
-class TestParseTrajectory:
+class TestParseExperience:
     def test_basic(self):
-        traj = parse_trajectory(SOLVER_OUTPUT, "prob_123")
-        assert traj.problem_id == "prob_123"
-        assert traj.is_correct is True
-        assert traj.code_solution == "def solve(s): return s[::-1]"
-        assert len(traj.test_results) == 1
-        assert traj.completed_at is not None
+        exp = parse_experience(SOLVER_OUTPUT, "prob_123")
+        assert exp.problem_id == "prob_123"
+        assert exp.is_correct is True
+        assert exp.code_solution == "def solve(s): return s[::-1]"
+        assert len(exp.test_results) == 1
+        assert exp.completed_at is not None
 
 
 class TestParseReflectionCards:
     def test_basic(self):
-        cards = parse_reflection_cards(CRITIC_OUTPUT, "traj_123")
+        cards = parse_reflection_cards(CRITIC_OUTPUT, "exp_123")
         assert len(cards) == 1
         card = cards[0]
         assert card.title == "Python slicing for reversal"
-        assert card.trajectory_id == "traj_123"
+        assert card.experience_id == "exp_123"
         assert card.category == ReflectionCategory.PATTERN
         assert card.confidence == 0.9
         assert card.supporting_steps == [0]
@@ -203,7 +203,7 @@ class TestParseReflectionCards:
                 "category": "nonexistent",
             }],
         })
-        cards = parse_reflection_cards(output, "traj_1")
+        cards = parse_reflection_cards(output, "exp_1")
         assert cards[0].category == ReflectionCategory.GENERAL
 
 
@@ -290,12 +290,12 @@ class TestPipelineSolver:
         problem = parse_problem(CURATOR_OUTPUT)
         fs.save_problem(problem)
 
-        traj = pipeline._run_solver("run_test", problem)
-        assert traj.is_correct is True
-        assert traj.code_solution == "def solve(s): return s[::-1]"
+        exp = pipeline._run_solver("run_test", problem)
+        assert exp.is_correct is True
+        assert exp.code_solution == "def solve(s): return s[::-1]"
 
-        # Trajectory was saved
-        loaded = fs.get_trajectory(traj.trajectory_id, "run_test")
+        # Experience was saved
+        loaded = fs.get_experience(exp.experience_id)
         assert loaded is not None
 
         # Problem status updated
@@ -307,11 +307,11 @@ class TestPipelineCritic:
     def test_run_critic(self, pipeline_setup):
         pipeline, runner, fs = pipeline_setup
         problem = parse_problem(CURATOR_OUTPUT)
-        traj = parse_trajectory(SOLVER_OUTPUT, problem.problem_id)
+        exp = parse_experience(SOLVER_OUTPUT, problem.problem_id)
 
-        cards = pipeline._run_critic("run_test", problem, traj)
+        cards = pipeline._run_critic("run_test", problem, exp)
         assert len(cards) == 1
-        assert cards[0].trajectory_id == traj.trajectory_id
+        assert cards[0].experience_id == exp.experience_id
 
 
 class TestIterationResult:
@@ -319,7 +319,7 @@ class TestIterationResult:
         result = IterationResult(
             run_tag="run_test",
             problem_id="p1",
-            trajectory_id="t1",
+            experience_id="e1",
             is_correct=True,
             cards_created=["c1", "c2"],
         )
@@ -330,7 +330,7 @@ class TestIterationResult:
         result = IterationResult(
             run_tag="run_test",
             problem_id="p1",
-            trajectory_id="t1",
+            experience_id="e1",
         )
         data = result.model_dump_json()
         loaded = IterationResult.model_validate_json(data)

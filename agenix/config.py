@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -51,14 +52,39 @@ class StorageConfig(BaseModel):
         return self.env_path / "cards"
 
     @property
+    def experiences_path(self) -> Path:
+        return self.env_path / "experiences"
+
+    @property
     def queues_path(self) -> Path:
         return self.env_path / "queues"
+
+    @property
+    def logs_path(self) -> Path:
+        return self.env_path / "logs"
 
     def run_path(self, run_tag: str) -> Path:
         return self.env_path / run_tag
 
-    def execution_log_path(self, run_tag: str) -> Path:
-        return self.run_path(run_tag) / "execution.jsonl"
+    def execution_log_path(self, run_tag: str, agent: str = "") -> Path:
+        name = f"{agent}_output.log" if agent else "output.log"
+        return self.run_path(run_tag) / name
+
+
+def make_log_path(
+    logs_dir: Path, agent_name: str, seq_id: int | None = None
+) -> Path:
+    """Build a log file path.
+
+    Format: <agent_name>[_<seq_id>]_<datetime>.log
+    seq_id is assigned by the orchestrator; omitted for standalone agents.
+    """
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    if seq_id is not None:
+        name = f"{agent_name}_{seq_id}_{ts}.log"
+    else:
+        name = f"{agent_name}_{ts}.log"
+    return logs_dir / name
 
 
 class EmbedderConfig(BaseModel):
@@ -160,12 +186,33 @@ class TunnelsConfig(BaseModel):
     tunnels: list[TunnelEndpoint] = Field(default_factory=list)
 
 
+class AgentSpec(BaseModel):
+    name: str
+    count: int = 1
+    options: dict[str, str | int | bool] = Field(default_factory=dict)
+
+
+class OrchestratorConfig(BaseModel):
+    agents: list[AgentSpec] = Field(
+        default_factory=lambda: [
+            AgentSpec(name="curator", count=1, options={"n": 100, "levels": "level_1,level_2"}),
+            AgentSpec(name="solver", count=2),
+            AgentSpec(name="critic", count=1),
+            AgentSpec(name="organizer", count=1, options={"interval": 300}),
+            AgentSpec(name="insight_finder", count=1, options={"interval": 600}),
+        ]
+    )
+    shutdown_timeout: int = 30
+    status_interval: int = 60
+
+
 class ReflectionConfig(BaseModel):
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     embedder: EmbedderConfig = Field(default_factory=EmbedderConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     tunnels: TunnelsConfig = Field(default_factory=TunnelsConfig)
+    orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
 
 
 def _default_env() -> str:

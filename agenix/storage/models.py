@@ -52,7 +52,7 @@ class Problem(BaseModel):
     created_at: datetime = Field(default_factory=_now)
 
 
-# --- Trajectory ---
+# --- Experience ---
 
 
 class StepType(str, Enum):
@@ -62,7 +62,7 @@ class StepType(str, Enum):
     FEEDBACK = "feedback"
 
 
-class TrajectoryStep(BaseModel):
+class ExperienceStep(BaseModel):
     step_index: int
     step_type: StepType
     content: str
@@ -79,10 +79,10 @@ class TestResult(BaseModel):
     error: str = ""
 
 
-class Trajectory(BaseModel):
-    trajectory_id: str = Field(default_factory=_ulid)
+class Experience(BaseModel):
+    experience_id: str = Field(default_factory=_ulid)
     problem_id: str
-    steps: list[TrajectoryStep] = Field(default_factory=list)
+    steps: list[ExperienceStep] = Field(default_factory=list)
     final_answer: str = ""
     code_solution: str = ""
     is_correct: bool = False
@@ -128,7 +128,7 @@ class SourceReference(BaseModel):
     """Typed reference to a source entity."""
 
     id: str
-    type: str  # "trajectory" | "reflection" | "card"
+    type: str  # "experience" | "reflection" | "card"
 
 
 class LineageEvent(BaseModel):
@@ -190,7 +190,7 @@ class InsightCard(Card):
 
 class ReflectionCard(Card):
     card_type: CardType = CardType.REFLECTION
-    trajectory_id: str
+    experience_id: str
     category: ReflectionCategory = ReflectionCategory.GENERAL
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     supporting_steps: list[int] = Field(default_factory=list)
@@ -204,7 +204,7 @@ class IterationResult(BaseModel):
 
     run_tag: str
     problem_id: str
-    trajectory_id: str
+    experience_id: str
     is_correct: bool = False
     cards_created: list[str] = Field(default_factory=list)
 

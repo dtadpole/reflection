@@ -7,7 +7,7 @@ without maintaining a persistent database.
 Directory layout under <env_path>:
     problems/<problem_id>.json          shared across runs
     cards/<card_id>.json                shared across runs (all card types)
-    <run_tag>/solver/<trajectory_id>.json
+    experiences/<agent_name>/<experience_id>.jsonl
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ from agenix.storage.models import (
     Card,
     CardStatus,
     CardType,
+    Experience,
     InsightCard,
     KnowledgeCard,
     Problem,
     ProblemStatus,
     ReflectionCard,
-    Trajectory,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -75,6 +75,9 @@ class FSBackend:
     def cards_dir(self) -> Path:
         return self.config.cards_path
 
+    def experiences_dir(self, agent: str = "solver") -> Path:
+        return self.config.experiences_path / agent
+
     def run_dir(self, run_tag: str) -> Path:
         return self.config.run_path(run_tag)
 
@@ -82,6 +85,8 @@ class FSBackend:
         """Create the directory structure."""
         self.problems_dir.mkdir(parents=True, exist_ok=True)
         self.cards_dir.mkdir(parents=True, exist_ok=True)
+        self.config.experiences_path.mkdir(parents=True, exist_ok=True)
+        self.config.logs_path.mkdir(parents=True, exist_ok=True)
 
     # --- Problems ---
 
@@ -122,52 +127,45 @@ class FSBackend:
         problem.status = status
         self.save_problem(problem)
 
-    # --- Trajectories ---
+    # --- Experiences ---
 
-    def save_trajectory(
-        self, trajectory: Trajectory, run_tag: str, agent: str = "solver"
+    def save_experience(
+        self, experience: Experience, agent: str = "solver"
     ) -> Path:
         path = (
-            self.run_dir(run_tag)
-            / agent
-            / f"{trajectory.trajectory_id}.json"
+            self.experiences_dir(agent)
+            / f"{experience.experience_id}.jsonl"
         )
-        _write_json(path, trajectory)
+        _write_json(path, experience)
         return path
 
-    def get_trajectory(
-        self, trajectory_id: str, run_tag: str, agent: str = "solver"
-    ) -> Optional[Trajectory]:
-        path = self.run_dir(run_tag) / agent / f"{trajectory_id}.json"
+    def get_experience(
+        self, experience_id: str, agent: str = "solver"
+    ) -> Optional[Experience]:
+        path = self.experiences_dir(agent) / f"{experience_id}.jsonl"
         if not path.exists():
             return None
-        return _read_json(path, Trajectory)
+        return _read_json(path, Experience)
 
-    def list_trajectories(
+    def list_experiences(
         self,
-        run_tag: Optional[str] = None,
         agent: str = "solver",
         is_correct: Optional[bool] = None,
         limit: int = 100,
-    ) -> list[Trajectory]:
-        """List trajectories. If run_tag is None, scans all runs."""
-        if run_tag:
-            search_dir = self.run_dir(run_tag) / agent
-            patterns = [search_dir]
-        else:
-            patterns = sorted(self.env_path.glob(f"run_*/{agent}"))
+    ) -> list[Experience]:
+        """List experiences for a given agent."""
+        search_dir = self.experiences_dir(agent)
+        if not search_dir.exists():
+            return []
 
-        trajectories: list[Trajectory] = []
-        for d in patterns:
-            if not d.is_dir():
-                continue
-            for f in d.glob("*.json"):
-                trajectories.append(_read_json(f, Trajectory))
+        experiences: list[Experience] = []
+        for f in sorted(search_dir.glob("*.jsonl")):
+            experiences.append(_read_json(f, Experience))
 
         if is_correct is not None:
-            trajectories = [t for t in trajectories if t.is_correct == is_correct]
-        trajectories.sort(key=lambda t: t.created_at, reverse=True)
-        return trajectories[:limit]
+            experiences = [e for e in experiences if e.is_correct == is_correct]
+        experiences.sort(key=lambda e: e.created_at, reverse=True)
+        return experiences[:limit]
 
     # --- Cards ---
 
@@ -204,19 +202,19 @@ class FSBackend:
         cards.sort(key=lambda c: c.updated_at, reverse=True)
         return cards[:limit]
 
-    def list_cards_by_trajectory(
+    def list_cards_by_experience(
         self,
-        trajectory_id: str,
+        experience_id: str,
         status: Optional[CardStatus] = CardStatus.ACTIVE,
         limit: int = 100,
     ) -> list[ReflectionCard]:
-        """List reflection cards for a given trajectory."""
+        """List reflection cards for a given experience."""
         cards = self.list_cards(
             card_type=CardType.REFLECTION, status=status, limit=limit
         )
         return [
             c for c in cards
-            if isinstance(c, ReflectionCard) and c.trajectory_id == trajectory_id
+            if isinstance(c, ReflectionCard) and c.experience_id == experience_id
         ]
 
     def find_cards_by_source(
@@ -248,31 +246,23 @@ class FSBackend:
         """Query cards via DuckDB SQL over JSON files."""
         return self._query_json_dir(self.cards_dir, sql_where, limit)
 
-    def query_trajectories(
+    def query_experiences(
         self,
         sql_where: str = "",
-        run_tag: Optional[str] = None,
+        agent: str = "solver",
         limit: int = 100,
     ) -> list[dict]:
-        """Query trajectories via DuckDB SQL over JSON files."""
-        if run_tag:
-            search_dir = self.run_dir(run_tag) / "solver"
-        else:
-            # Scan all runs — use glob pattern
-            return self._query_json_glob(
-                str(self.env_path / "run_*" / "solver" / "*.json"),
-                sql_where,
-                limit,
-            )
+        """Query experiences via DuckDB SQL over JSON files."""
+        search_dir = self.experiences_dir(agent)
         return self._query_json_dir(search_dir, sql_where, limit)
 
     def _query_json_dir(
         self, directory: Path, sql_where: str = "", limit: int = 100
     ) -> list[dict]:
         """Run a DuckDB query over all JSON files in a directory."""
-        if not directory.exists() or not list(directory.glob("*.json")):
+        if not directory.exists() or not list(directory.glob("*.json*")):
             return []
-        glob_pattern = str(directory / "*.json")
+        glob_pattern = str(directory / "*.json*")
         return self._query_json_glob(glob_pattern, sql_where, limit)
 
     def _query_json_glob(
@@ -316,9 +306,9 @@ class FSBackend:
             ])
         return len(list(self.cards_dir.glob("*.json")))
 
-    def count_trajectories(
-        self, is_correct: Optional[bool] = None, run_tag: Optional[str] = None
+    def count_experiences(
+        self, is_correct: Optional[bool] = None, agent: str = "solver"
     ) -> int:
-        return len(self.list_trajectories(
-            run_tag=run_tag, is_correct=is_correct, limit=999999
+        return len(self.list_experiences(
+            agent=agent, is_correct=is_correct, limit=999999
         ))

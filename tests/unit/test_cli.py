@@ -19,7 +19,7 @@ class TestStatus:
         ])
         assert result.exit_code == 0
         assert "Problems:" in result.output
-        assert "Trajectories:" in result.output
+        assert "Experiences:" in result.output
         assert "Cards:" in result.output
 
     def test_status_verbose(self, tmp_path):
@@ -61,15 +61,15 @@ class TestCardsList:
         assert result.exit_code == 0
 
 
-class TestTrajectoriesList:
-    def test_trajectories_list_empty(self, tmp_path):
+class TestExperiencesList:
+    def test_experiences_list_empty(self, tmp_path):
         result = runner.invoke(app, [
-            "trajectories", "list",
+            "experiences", "list",
             "--env", "test_cli",
             "--config", str(tmp_path / "nonexistent.toml"),
         ])
         assert result.exit_code == 0
-        assert "No trajectories found" in result.output
+        assert "No experiences found" in result.output
 
 
 class TestHelp:
@@ -91,6 +91,11 @@ class TestHelp:
         result = runner.invoke(app, ["cards", "--help"])
         assert result.exit_code == 0
 
-    def test_trajectories_help(self):
-        result = runner.invoke(app, ["trajectories", "--help"])
+    def test_experiences_help(self):
+        result = runner.invoke(app, ["experiences", "--help"])
         assert result.exit_code == 0
+
+    def test_orchestrate_help(self):
+        result = runner.invoke(app, ["orchestrate", "--help"])
+        assert result.exit_code == 0
+        assert "managed subprocesses" in result.output.lower()

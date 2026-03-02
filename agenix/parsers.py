@@ -11,6 +11,7 @@ from typing import Any
 
 from agenix.storage.models import (
     Difficulty,
+    Experience,
     InsightCard,
     KnowledgeCard,
     Problem,
@@ -18,7 +19,6 @@ from agenix.storage.models import (
     ReflectionCategory,
     TestCase,
     TestResult,
-    Trajectory,
 )
 
 
@@ -87,8 +87,8 @@ def parse_problem(output: str) -> Problem:
     )
 
 
-def parse_trajectory(output: str, problem_id: str) -> Trajectory:
-    """Parse solver output into a Trajectory."""
+def parse_experience(output: str, problem_id: str) -> Experience:
+    """Parse solver output into an Experience."""
     data = extract_json(output)
     test_results = []
     for tr in data.get("test_results", []):
@@ -105,7 +105,7 @@ def parse_trajectory(output: str, problem_id: str) -> Trajectory:
             actual_output=tr.get("actual_output", ""),
             error=tr.get("error", ""),
         ))
-    return Trajectory(
+    return Experience(
         problem_id=problem_id,
         code_solution=data.get("code_solution", ""),
         final_answer=data.get("final_answer", ""),
@@ -116,7 +116,7 @@ def parse_trajectory(output: str, problem_id: str) -> Trajectory:
 
 
 def parse_reflection_cards(
-    output: str, trajectory_id: str
+    output: str, experience_id: str
 ) -> list[ReflectionCard]:
     """Parse critic output into ReflectionCards."""
     data = extract_json(output)
@@ -129,7 +129,7 @@ def parse_reflection_cards(
         cards.append(ReflectionCard(
             title=rc["title"],
             content=rc["content"],
-            trajectory_id=trajectory_id,
+            experience_id=experience_id,
             category=category,
             confidence=rc.get("confidence", 0.5),
             tags=rc.get("tags", []),

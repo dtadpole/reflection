@@ -67,7 +67,7 @@ A JSON object with:
   - `domain`: "triton_kernels"
   - `difficulty`: "easy" | "medium" | "hard"
 - `knowledge`: Retrieved knowledge cards (Triton patterns, optimization techniques)
-- `previous_attempts`: Previous trajectories for this problem (if any)
+- `previous_attempts`: Previous experiences for this problem (if any)
 
 ## Output Format
 You MUST respond with a JSON object. Do not output anything outside the JSON.

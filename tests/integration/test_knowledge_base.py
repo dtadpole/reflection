@@ -177,7 +177,7 @@ class TestCreate:
         )
         record_creation(
             card,
-            [SourceReference(id="traj-001", type="trajectory")],
+            [SourceReference(id="traj-001", type="experience")],
             agent="test",
             run_tag="test_run",
         )
@@ -194,7 +194,7 @@ class TestCreate:
         # Source refs preserved after round-trip
         assert len(loaded.source_refs) == 1
         assert loaded.source_refs[0].id == "traj-001"
-        assert loaded.source_refs[0].type == "trajectory"
+        assert loaded.source_refs[0].type == "experience"
 
         # LanceDB check
         _assert_in_lance(store, card.card_id)
@@ -230,14 +230,14 @@ class TestCreate:
             content="Using shared memory tiles for matrix multiply reduces "
             "global memory access by factor of tile_size.",
             tags=["gpu", "shared_memory", "tiling"],
-            trajectory_id="traj-002",
+            experience_id="exp-002",
             category=ReflectionCategory.OPTIMIZATION,
             confidence=0.85,
             supporting_steps=[3, 5, 7],
         )
         record_creation(
             card,
-            [SourceReference(id="traj-002", type="trajectory")],
+            [SourceReference(id="traj-002", type="experience")],
             agent="critic",
         )
         store.add_card(card)
@@ -308,7 +308,7 @@ class TestRevise:
         )
         record_creation(
             old,
-            [SourceReference(id="traj-010", type="trajectory")],
+            [SourceReference(id="traj-010", type="experience")],
             agent="organizer",
         )
         store.add_card(old)
@@ -326,7 +326,7 @@ class TestRevise:
         revise_card(
             old,
             new,
-            new_source_refs=[SourceReference(id="traj-011", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-011", type="experience")],
             agent="organizer",
             run_tag="run_revise",
         )
@@ -442,12 +442,12 @@ class TestMerge:
         )
         record_creation(
             card_a,
-            [SourceReference(id="traj-020", type="trajectory")],
+            [SourceReference(id="traj-020", type="experience")],
             agent="critic",
         )
         record_creation(
             card_b,
-            [SourceReference(id="traj-021", type="trajectory")],
+            [SourceReference(id="traj-021", type="experience")],
             agent="critic",
         )
         store.add_card(card_a)
@@ -569,7 +569,7 @@ class TestSplit:
         )
         record_creation(
             original,
-            [SourceReference(id="traj-030", type="trajectory")],
+            [SourceReference(id="traj-030", type="experience")],
             agent="test",
         )
         store.add_card(original)
@@ -594,8 +594,8 @@ class TestSplit:
             original,
             [child_a, child_b],
             child_source_refs=[
-                [SourceReference(id="traj-030", type="trajectory")],
-                [SourceReference(id="traj-030", type="trajectory")],
+                [SourceReference(id="traj-030", type="experience")],
+                [SourceReference(id="traj-030", type="experience")],
             ],
             agent="organizer",
             run_tag="run_split",
@@ -897,7 +897,7 @@ class TestFullLifecycle:
         for c in [card_a, card_b]:
             record_creation(
                 c,
-                [SourceReference(id="traj-100", type="trajectory")],
+                [SourceReference(id="traj-100", type="experience")],
                 agent="critic",
             )
             store.add_card(c)

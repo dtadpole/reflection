@@ -15,7 +15,7 @@ _apply_sdk_fix()
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 from claude_agent_sdk.types import AssistantMessage, SystemMessage, UserMessage
 
-from agenix.execution_log import ExecutionLogger, NullExecutionLogger
+from agenix.conversation_log import ConversationLogger, NullConversationLogger
 from agenix.storage.models import LoadedAgent
 from agenix.tools.registry import ToolRegistry
 
@@ -56,23 +56,28 @@ class ClaudeRunner:
         self,
         tool_registry: Optional[ToolRegistry] = None,
         cwd: Optional[Path] = None,
-        execution_log: Optional[ExecutionLogger] = None,
+        run_dir: Optional[Path] = None,
     ) -> None:
         self._registry = tool_registry
         self._cwd = cwd
-        self._log = execution_log or NullExecutionLogger()
+        self._run_dir = run_dir
 
     def run(self, agent: LoadedAgent, input_payload: str) -> AgentResult:
         """Run an agent synchronously. Implements the AgentRunner protocol.
 
         Each agent call gets its own asyncio.run() for clean isolation.
+        If run_dir is set, a conversation JSONL file is automatically created
+        at <run_dir>/<ulid>.jsonl capturing the full LLM conversation.
         """
         return asyncio.run(self._run_async(agent, input_payload))
 
     async def _run_async(
-        self, agent: LoadedAgent, input_payload: str,
+        self,
+        agent: LoadedAgent,
+        input_payload: str,
     ) -> AgentResult:
         """Run an agent asynchronously via claude_agent_sdk.query()."""
+        conv = self._make_conversation_logger()
         options = self._build_options(agent)
 
         logger.info(
@@ -82,26 +87,22 @@ class ClaudeRunner:
             options.max_turns,
         )
 
-        self._log.agent_started(
-            agent_name=agent.name,
-            model=options.model,
-            max_turns=options.max_turns,
-            input_size_chars=len(input_payload),
-        )
-
         result_message: ResultMessage | None = None
         turn = 0
         async for message in query(prompt=input_payload, options=options):
             if isinstance(message, AssistantMessage):
                 turn += 1
                 self._log_assistant_message(agent.name, turn, message)
+                conv.log_assistant(message)
             elif isinstance(message, UserMessage):
                 self._log_user_message(agent.name, turn, message)
+                conv.log_user(message)
             elif isinstance(message, SystemMessage):
                 logger.info(
                     "[%s] system: subtype=%s data=%s",
                     agent.name, message.subtype, message.data,
                 )
+                conv.log_system(message)
             elif isinstance(message, ResultMessage):
                 result_message = message
             else:
@@ -111,6 +112,8 @@ class ClaudeRunner:
 
         if result_message is None:
             raise RuntimeError(f"Agent {agent.name} returned no result")
+
+        conv.log_result(result_message)
 
         if result_message.is_error:
             raise RuntimeError(
@@ -133,15 +136,6 @@ class ClaudeRunner:
             result.duration_ms,
             result.num_turns,
             result.cost_usd,
-        )
-
-        self._log.agent_completed(
-            agent_name=agent.name,
-            duration_ms=result.duration_ms,
-            num_turns=result.num_turns,
-            cost_usd=result.cost_usd,
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
         )
 
         return result
@@ -247,3 +241,12 @@ class ClaudeRunner:
             options.cwd = self._cwd
 
         return options
+
+    def _make_conversation_logger(self) -> ConversationLogger:
+        """Create a ConversationLogger for this run, or a no-op if no run_dir."""
+        if self._run_dir is None:
+            return NullConversationLogger()
+        from ulid import ULID
+
+        path = self._run_dir / f"{ULID()}.jsonl"
+        return ConversationLogger(path)

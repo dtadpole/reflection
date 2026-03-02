@@ -133,7 +133,7 @@ class TestKnowledgeRetrieval:
             content="Key-value storage with O(1) average lookup.",
             domain="data_structures",
         )
-        record_creation(old_card, [SourceReference(id="traj-1", type="trajectory")])
+        record_creation(old_card, [SourceReference(id="traj-1", type="experience")])
         knowledge_store.add_card(old_card)
 
         # Revise into a new card

@@ -286,9 +286,9 @@ def find_cards_by_source(
     return results
 
 
-def get_source_trajectories(card: Card) -> list[str]:
-    """Extract trajectory IDs from a card's source_refs."""
-    return [ref.id for ref in card.source_refs if ref.type == "trajectory"]
+def get_source_experiences(card: Card) -> list[str]:
+    """Extract experience IDs from a card's source_refs."""
+    return [ref.id for ref in card.source_refs if ref.type == "experience"]
 
 
 def get_source_reflections(card: Card) -> list[str]:

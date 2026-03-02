@@ -1,4 +1,4 @@
-"""Solver handler — dequeues problems, runs solver agent, enqueues trajectories.
+"""Solver handler — dequeues problems, runs solver agent, enqueues experiences.
 
 The solver agent internally iterates: write Triton kernel → verify → read
 feedback → revise, using the Verifier and Knowledge Retriever MCP tools.
@@ -9,9 +9,8 @@ from __future__ import annotations
 import json
 import logging
 
-from agenix.execution_log import ExecutionLogger, NullExecutionLogger
 from agenix.loader import load_agent
-from agenix.parsers import parse_trajectory
+from agenix.parsers import parse_experience
 from agenix.queue.fs_queue import FSQueue
 from agenix.queue.models import QueueMessage
 from agenix.runner import ClaudeRunner
@@ -30,19 +29,17 @@ class SolverHandler:
         runner: ClaudeRunner,
         fs_backend: FSBackend,
         knowledge_store: KnowledgeStore,
-        trajectories_queue: FSQueue,
+        experiences_queue: FSQueue,
         run_tag: str,
         *,
         knowledge_limit: int = 10,
-        execution_log: ExecutionLogger | None = None,
     ) -> None:
         self._runner = runner
         self._fs = fs_backend
         self._store = knowledge_store
-        self._traj_queue = trajectories_queue
+        self._exp_queue = experiences_queue
         self._run_tag = run_tag
         self._knowledge_limit = knowledge_limit
-        self._log = execution_log or NullExecutionLogger()
 
     def handle(self, message: QueueMessage) -> None:
         """Process a problem message from the problems queue."""
@@ -60,11 +57,6 @@ class SolverHandler:
         )
         knowledge_hits = self._store.search(
             query=retrieval_query,
-            limit=self._knowledge_limit,
-        )
-        self._log.knowledge_retrieval(
-            query=retrieval_query,
-            num_hits=len(knowledge_hits),
             limit=self._knowledge_limit,
         )
         knowledge = [
@@ -88,36 +80,28 @@ class SolverHandler:
         agent = load_agent("solver")
         result = self._runner.run(agent, input_payload)
 
-        # Parse trajectory
-        trajectory = parse_trajectory(result.output, problem_id)
-        self._log.output_parsed(
-            parser="parse_trajectory",
-            success=True,
-            entities=[f"trajectory:{trajectory.trajectory_id}"],
-        )
+        # Parse experience
+        experience = parse_experience(result.output, problem_id)
 
-        self._fs.save_trajectory(trajectory, self._run_tag)
-        self._log.data_saved("trajectory", trajectory.trajectory_id)
+        self._fs.save_experience(experience)
 
         new_status = (
-            ProblemStatus.SOLVED if trajectory.is_correct else ProblemStatus.FAILED
+            ProblemStatus.SOLVED if experience.is_correct else ProblemStatus.FAILED
         )
         self._fs.update_problem_status(problem_id, new_status)
 
         # Enqueue for critic
-        self._traj_queue.initialize()
-        msg = self._traj_queue.enqueue(
+        self._exp_queue.initialize()
+        self._exp_queue.enqueue(
             sender="solver",
             payload={
-                "trajectory_id": trajectory.trajectory_id,
+                "experience_id": experience.experience_id,
                 "problem_id": problem_id,
-                "run_tag": self._run_tag,
             },
         )
-        self._log.message_enqueued("trajectories", msg.message_id)
 
         logger.info(
-            "Solver finished: correct=%s, trajectory=%s",
-            trajectory.is_correct,
-            trajectory.trajectory_id,
+            "Solver finished: correct=%s, experience=%s",
+            experience.is_correct,
+            experience.experience_id,
         )

@@ -7,6 +7,8 @@ from agenix.storage.models import (
     CardStatus,
     CardType,
     Difficulty,
+    Experience,
+    ExperienceStep,
     HypothesisStatus,
     InsightCard,
     KnowledgeCard,
@@ -21,8 +23,6 @@ from agenix.storage.models import (
     StepType,
     TestCase,
     TestResult,
-    Trajectory,
-    TrajectoryStep,
 )
 
 
@@ -85,22 +85,22 @@ class TestProblem:
         assert p1.problem_id != p2.problem_id
 
 
-class TestTrajectory:
+class TestExperience:
     def test_create_empty(self):
-        t = Trajectory(problem_id="test-123")
-        assert t.problem_id == "test-123"
-        assert t.steps == []
-        assert t.is_correct is False
-        assert t.completed_at is None
+        e = Experience(problem_id="test-123")
+        assert e.problem_id == "test-123"
+        assert e.steps == []
+        assert e.is_correct is False
+        assert e.completed_at is None
 
     def test_with_steps(self):
         steps = [
-            TrajectoryStep(
+            ExperienceStep(
                 step_index=0,
                 step_type=StepType.THOUGHT,
                 content="Let me think about this",
             ),
-            TrajectoryStep(
+            ExperienceStep(
                 step_index=1,
                 step_type=StepType.ACTION,
                 content="Running code",
@@ -108,21 +108,21 @@ class TestTrajectory:
                 tool_input='{"reference_code": "...", "generated_code": "..."}',
                 tool_output='{"compiled": true, "correctness": true}',
             ),
-            TrajectoryStep(
+            ExperienceStep(
                 step_index=2,
                 step_type=StepType.OBSERVATION,
                 content="Verification completed successfully",
             ),
         ]
-        t = Trajectory(problem_id="p1", steps=steps)
-        assert len(t.steps) == 3
-        assert t.steps[1].tool_name == "verifier"
+        e = Experience(problem_id="p1", steps=steps)
+        assert len(e.steps) == 3
+        assert e.steps[1].tool_name == "verifier"
 
     def test_serialization_roundtrip(self):
-        t = Trajectory(
+        e = Experience(
             problem_id="p1",
             steps=[
-                TrajectoryStep(
+                ExperienceStep(
                     step_index=0,
                     step_type=StepType.THOUGHT,
                     content="thinking",
@@ -131,10 +131,10 @@ class TestTrajectory:
             code_solution="def solve(): pass",
             is_correct=True,
         )
-        data = t.model_dump()
-        t2 = Trajectory.model_validate(data)
-        assert t2.is_correct is True
-        assert t2.code_solution == "def solve(): pass"
+        data = e.model_dump()
+        e2 = Experience.model_validate(data)
+        assert e2.is_correct is True
+        assert e2.code_solution == "def solve(): pass"
 
 
 class TestTestResult:
@@ -161,7 +161,7 @@ class TestReflectionCard:
         r = ReflectionCard(
             title="DP Reflection",
             content="Dynamic programming works by breaking problems into subproblems",
-            trajectory_id="t1",
+            experience_id="e1",
             category=ReflectionCategory.ALGORITHM,
             confidence=0.8,
             supporting_steps=[0, 2, 4],
@@ -170,7 +170,7 @@ class TestReflectionCard:
         assert r.category == ReflectionCategory.ALGORITHM
         assert r.confidence == 0.8
         assert len(r.supporting_steps) == 3
-        assert r.trajectory_id == "t1"
+        assert r.experience_id == "e1"
         assert r.card_id  # inherited from Card
         assert r.version == 1
 
@@ -181,7 +181,7 @@ class TestReflectionCard:
             ReflectionCard(
                 title="Test",
                 content="test",
-                trajectory_id="t1",
+                experience_id="e1",
                 confidence=1.5,
             )
 
@@ -189,7 +189,7 @@ class TestReflectionCard:
         r = ReflectionCard(
             title="Test",
             content="Content",
-            trajectory_id="t1",
+            experience_id="e1",
             tags=["dp"],
         )
         assert r.status == CardStatus.ACTIVE
@@ -201,7 +201,7 @@ class TestReflectionCard:
         r = ReflectionCard(
             title="Test",
             content="Content",
-            trajectory_id="t1",
+            experience_id="e1",
             category=ReflectionCategory.PATTERN,
             confidence=0.9,
             supporting_steps=[1, 3],
@@ -209,7 +209,7 @@ class TestReflectionCard:
         json_str = r.model_dump_json()
         r2 = ReflectionCard.model_validate_json(json_str)
         assert r2.card_type == CardType.REFLECTION
-        assert r2.trajectory_id == "t1"
+        assert r2.experience_id == "e1"
         assert r2.category == ReflectionCategory.PATTERN
         assert r2.confidence == 0.9
 
@@ -285,9 +285,9 @@ class TestLineageOperation:
 
 class TestSourceReference:
     def test_create(self):
-        ref = SourceReference(id="traj-001", type="trajectory")
+        ref = SourceReference(id="traj-001", type="experience")
         assert ref.id == "traj-001"
-        assert ref.type == "trajectory"
+        assert ref.type == "experience"
 
     def test_json_roundtrip(self):
         ref = SourceReference(id="refl-001", type="reflection")
@@ -302,7 +302,7 @@ class TestLineageEvent:
             operation=LineageOperation.CREATE,
             agent="organizer",
             run_tag="run_001",
-            source_refs=[SourceReference(id="traj-1", type="trajectory")],
+            source_refs=[SourceReference(id="traj-1", type="experience")],
         )
         assert event.operation == LineageOperation.CREATE
         assert event.agent == "organizer"
@@ -351,12 +351,12 @@ class TestCardLineageFields:
             status=CardStatus.SUPERSEDED,
             superseded_by="card-new",
             predecessor_ids=["card-old"],
-            source_refs=[SourceReference(id="traj-1", type="trajectory")],
+            source_refs=[SourceReference(id="traj-1", type="experience")],
             lineage=[
                 LineageEvent(
                     operation=LineageOperation.CREATE,
                     agent="organizer",
-                    source_refs=[SourceReference(id="traj-1", type="trajectory")],
+                    source_refs=[SourceReference(id="traj-1", type="experience")],
                 )
             ],
         )

@@ -9,7 +9,7 @@ uv sync                                    # Install dependencies
 uv run reflection status                   # Show system status
 uv run reflection cards list               # List knowledge cards
 uv run reflection cards search "query"     # Search cards
-uv run reflection trajectories list        # List solver trajectories
+uv run reflection experiences list          # List solver experiences
 ```
 
 ### Running Agents (async, each in its own terminal)
@@ -84,7 +84,7 @@ Agents operate independently and communicate via filesystem queues and the share
     │             ▲  │              ▲
     └─────────────┘  │              │
        (iterate)     ▼              │
-              [trajectories queue]  │
+              [experiences queue]   │
                          │          │
                          ▼          │
                       CRITIC        │
@@ -99,12 +99,12 @@ Agents operate independently and communicate via filesystem queues and the share
 
 ### Queue Topology
 
-Two queues (`problems`, `trajectories`) under `<data_root>/<env>/queues/`:
+Two queues (`problems`, `experiences`) under `<data_root>/<env>/queues/`:
 
 | Queue | Producer | Consumer | Payload |
 |-------|----------|----------|---------|
 | `problems` | CURATOR | SOLVER | `{problem_id, title}` |
-| `trajectories` | SOLVER | CRITIC | `{trajectory_id, problem_id, run_tag}` |
+| `experiences` | SOLVER | CRITIC | `{experience_id, problem_id}` |
 
 Each queue has subdirectories: `pending/`, `processing/`, `done/`, `failed/`.
 Messages are JSON files. State transitions use atomic `os.rename()` for POSIX safety.
@@ -114,10 +114,10 @@ Messages are JSON files. State transitions use atomic `os.rename()` for POSIX sa
 | Agent | Type | Description |
 |-------|------|-------------|
 | CURATOR | One-shot (pure Python) | Loads KernelBench problems from HuggingFace, enqueues to `problems` |
-| SOLVER | Queue loop | Dequeues problems, writes Triton kernels, verifies, enqueues trajectories |
-| CRITIC | Queue loop | Dequeues trajectories, produces reflection cards to knowledge base |
-| ORGANIZER | Scheduled (5 min) | Synthesizes knowledge cards from recent trajectories + reflections |
-| INSIGHT_FINDER | Scheduled (10 min) | Detects cross-cutting meta-patterns across trajectories |
+| SOLVER | Queue loop | Dequeues problems, writes Triton kernels, verifies, enqueues experiences |
+| CRITIC | Queue loop | Dequeues experiences, produces reflection cards to knowledge base |
+| ORGANIZER | Scheduled (5 min) | Synthesizes knowledge cards from recent experiences + reflections |
+| INSIGHT_FINDER | Scheduled (10 min) | Detects cross-cutting meta-patterns across experiences |
 
 ### Problem Source: KernelBench
 
@@ -170,8 +170,7 @@ Path: `<reflection_data_root>/<reflection_env>/`
 - Available `reflection_env`: `prod`, `int`, `test_${USER}`
 - Default `run_tag`: `run_{YYYYMMDD_HHMMSS}`
 - **Filesystem-based**: all data stored as JSON files, one file per entity
-- **Shared data** (`problems/`, `cards/`, `lance/`, `queues/`) at env level, persists across runs
-- **Per-run data** under `<run_tag>/<agent_name>/`, one JSON per entity
+- **Shared data** (`problems/`, `cards/`, `experiences/`, `lance/`, `queues/`) at env level, persists across runs
 - **DuckDB** as query engine over JSON files (no persistent DB)
 - **LanceDB** for vector embeddings (semantic search over cards)
 

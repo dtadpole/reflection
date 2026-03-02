@@ -6,8 +6,8 @@ from agenix.storage.lineage import (
     archive_card,
     find_cards_by_source,
     get_card_ancestry,
+    get_source_experiences,
     get_source_reflections,
-    get_source_trajectories,
     merge_cards,
     record_creation,
     revise_card,
@@ -31,7 +31,7 @@ class TestRecordCreation:
     def test_sets_source_refs_and_event(self):
         card = _make_card()
         refs = [
-            SourceReference(id="traj-1", type="trajectory"),
+            SourceReference(id="traj-1", type="experience"),
             SourceReference(id="refl-1", type="reflection"),
         ]
         record_creation(card, refs, agent="organizer", run_tag="run_001")
@@ -56,14 +56,14 @@ class TestReviseCard:
         old = _make_card(title="Old")
         record_creation(
             old,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         new = _make_card(title="Updated")
         revise_card(
             old, new,
-            new_source_refs=[SourceReference(id="traj-2", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="organizer",
             run_tag="run_002",
         )
@@ -88,7 +88,7 @@ class TestReviseCard:
 
     def test_deduplicates_inherited_sources(self):
         old = _make_card()
-        ref = SourceReference(id="traj-1", type="trajectory")
+        ref = SourceReference(id="traj-1", type="experience")
         record_creation(old, [ref], agent="organizer")
 
         new = _make_card()
@@ -104,7 +104,7 @@ class TestReviseCard:
         old = _make_card()
         record_creation(
             old,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
@@ -121,7 +121,7 @@ class TestReviseCard:
         old = _make_card(title="Original Title", content="Original Content")
         record_creation(
             old,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
         old_refs_before = list(old.source_refs)
@@ -129,7 +129,7 @@ class TestReviseCard:
         new = _make_card(title="New Title", content="New Content")
         revise_card(
             old, new,
-            new_source_refs=[SourceReference(id="traj-2", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
@@ -144,14 +144,14 @@ class TestMergeCards:
         card_a = _make_card(title="A")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         card_b = _make_card(title="B")
         record_creation(
             card_b,
-            [SourceReference(id="traj-2", type="trajectory")],
+            [SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
@@ -182,7 +182,7 @@ class TestMergeCards:
     def test_source_content_unchanged_after_merge(self):
         """Immutability: source cards' content stays untouched."""
         card_a = _make_card(title="A", content="Content A")
-        record_creation(card_a, [SourceReference(id="traj-1", type="trajectory")])
+        record_creation(card_a, [SourceReference(id="traj-1", type="experience")])
 
         merged = _make_card(title="Merged")
         merge_cards([card_a], merged, agent="organizer")
@@ -198,8 +198,8 @@ class TestSplitCard:
         record_creation(
             original,
             [
-                SourceReference(id="traj-1", type="trajectory"),
-                SourceReference(id="traj-2", type="trajectory"),
+                SourceReference(id="traj-1", type="experience"),
+                SourceReference(id="traj-2", type="experience"),
             ],
             agent="organizer",
         )
@@ -211,8 +211,8 @@ class TestSplitCard:
             original,
             [child_a, child_b],
             child_source_refs=[
-                [SourceReference(id="traj-1", type="trajectory")],
-                [SourceReference(id="traj-2", type="trajectory")],
+                [SourceReference(id="traj-1", type="experience")],
+                [SourceReference(id="traj-2", type="experience")],
             ],
             agent="organizer",
             run_tag="run_004",
@@ -231,8 +231,8 @@ class TestSplitCard:
         assert child_a.lineage[-1].split_from_card_id == original.card_id
 
         # Each child gets only its relevant sources
-        assert get_source_trajectories(child_a) == ["traj-1"]
-        assert get_source_trajectories(child_b) == ["traj-2"]
+        assert get_source_experiences(child_a) == ["traj-1"]
+        assert get_source_experiences(child_b) == ["traj-2"]
         assert child_a.source_ids == ["traj-1"]
         assert child_b.source_ids == ["traj-2"]
 
@@ -241,7 +241,7 @@ class TestSplitCard:
         original = _make_card(title="Original")
         record_creation(
             original,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
@@ -257,7 +257,7 @@ class TestSplitCard:
         original = _make_card(title="Original", content="Original Content")
         record_creation(
             original,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
@@ -284,13 +284,13 @@ class TestFindCardsBySource:
         card_a = _make_card(title="A")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
         )
 
         card_b = _make_card(title="B")
         record_creation(
             card_b,
-            [SourceReference(id="traj-2", type="trajectory")],
+            [SourceReference(id="traj-2", type="experience")],
         )
 
         found = find_cards_by_source("traj-1", [card_a, card_b])
@@ -302,32 +302,32 @@ class TestFindCardsBySource:
         record_creation(
             card,
             [
-                SourceReference(id="shared-id", type="trajectory"),
+                SourceReference(id="shared-id", type="experience"),
                 SourceReference(id="shared-id", type="reflection"),
             ],
         )
 
-        found = find_cards_by_source("shared-id", [card], source_type="trajectory")
+        found = find_cards_by_source("shared-id", [card], source_type="experience")
         assert len(found) == 1
 
     def test_no_match(self):
         card = _make_card()
-        record_creation(card, [SourceReference(id="traj-1", type="trajectory")])
+        record_creation(card, [SourceReference(id="traj-1", type="experience")])
         assert find_cards_by_source("traj-99", [card]) == []
 
 
 class TestGetSourceHelpers:
-    def test_get_source_trajectories(self):
+    def test_get_source_experiences(self):
         card = _make_card()
         record_creation(
             card,
             [
-                SourceReference(id="traj-1", type="trajectory"),
+                SourceReference(id="traj-1", type="experience"),
                 SourceReference(id="refl-1", type="reflection"),
-                SourceReference(id="traj-2", type="trajectory"),
+                SourceReference(id="traj-2", type="experience"),
             ],
         )
-        assert get_source_trajectories(card) == ["traj-1", "traj-2"]
+        assert get_source_experiences(card) == ["traj-1", "traj-2"]
 
     def test_get_source_reflections(self):
         card = _make_card()
@@ -335,7 +335,7 @@ class TestGetSourceHelpers:
             card,
             [
                 SourceReference(id="refl-1", type="reflection"),
-                SourceReference(id="traj-1", type="trajectory"),
+                SourceReference(id="traj-1", type="experience"),
             ],
         )
         assert get_source_reflections(card) == ["refl-1"]
@@ -390,7 +390,7 @@ class TestBackwardCompat:
         card = _make_card()
         record_creation(
             card,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
             run_tag="run_001",
         )
@@ -399,7 +399,7 @@ class TestBackwardCompat:
         new = _make_card(content="Updated")
         revise_card(
             card, new,
-            new_source_refs=[SourceReference(id="traj-2", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
@@ -426,7 +426,7 @@ class TestImmutability:
     def test_revise_produces_distinct_card_id(self):
         """Revision creates a card with a new card_id, not the same one."""
         old = _make_card()
-        record_creation(old, [SourceReference(id="traj-1", type="trajectory")])
+        record_creation(old, [SourceReference(id="traj-1", type="experience")])
 
         new = _make_card()
         revise_card(old, new)
@@ -447,7 +447,7 @@ class TestImmutability:
     def test_all_superseded_cards_have_lineage_events(self):
         """Every superseded card has at least one SUPERSEDE event in its lineage."""
         old = _make_card()
-        record_creation(old, [SourceReference(id="traj-1", type="trajectory")])
+        record_creation(old, [SourceReference(id="traj-1", type="experience")])
 
         new = _make_card()
         revise_card(old, new, agent="organizer")
@@ -463,21 +463,21 @@ class TestImmutability:
         card_a = _make_card(title="V1")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         card_b = _make_card(title="V2")
         revise_card(
             card_a, card_b,
-            new_source_refs=[SourceReference(id="traj-2", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
         card_c = _make_card(title="V3")
         revise_card(
             card_b, card_c,
-            new_source_refs=[SourceReference(id="traj-3", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-3", type="experience")],
             agent="organizer",
         )
 
@@ -497,20 +497,20 @@ class TestImmutability:
         assert card_b.card_id in ancestry
         assert card_a.card_id in ancestry
 
-        # C has all trajectories
-        assert set(get_source_trajectories(card_c)) == {"traj-1", "traj-2", "traj-3"}
+        # C has all experiences
+        assert set(get_source_experiences(card_c)) == {"traj-1", "traj-2", "traj-3"}
 
 
 class TestTraceability:
-    """End-to-end tests: verify cards can trace back to original trajectories
+    """End-to-end tests: verify cards can trace back to original experiences
     through chains of lineage operations."""
 
-    def test_create_then_revise_preserves_all_trajectories(self):
+    def test_create_then_revise_preserves_all_experiences(self):
         """Create from traj-1, revise with traj-2 → both traceable on new card."""
         old = _make_card()
         record_creation(
             old,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="critic",
             run_tag="run_001",
         )
@@ -518,49 +518,49 @@ class TestTraceability:
         new = _make_card()
         revise_card(
             old, new,
-            new_source_refs=[SourceReference(id="traj-2", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-2", type="experience")],
             agent="critic",
             run_tag="run_002",
         )
 
-        trajs = get_source_trajectories(new)
+        trajs = get_source_experiences(new)
         assert trajs == ["traj-1", "traj-2"]
 
-    def test_merge_preserves_all_source_trajectories(self):
+    def test_merge_preserves_all_source_experiences(self):
         """Card A from traj-1, Card B from traj-2, merge → new card traces to both."""
         card_a = _make_card(title="A")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         card_b = _make_card(title="B")
         record_creation(
             card_b,
-            [SourceReference(id="traj-2", type="trajectory")],
+            [SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
         merged = _make_card(title="Merged")
         merge_cards([card_a, card_b], merged, agent="organizer", run_tag="run_003")
 
-        # Merged card traces back to both trajectories
-        trajs = get_source_trajectories(merged)
+        # Merged card traces back to both experiences
+        trajs = get_source_experiences(merged)
         assert set(trajs) == {"traj-1", "traj-2"}
 
-        # Archived cards still retain their own trajectories
-        assert get_source_trajectories(card_a) == ["traj-1"]
-        assert get_source_trajectories(card_b) == ["traj-2"]
+        # Archived cards still retain their own experiences
+        assert get_source_experiences(card_a) == ["traj-1"]
+        assert get_source_experiences(card_b) == ["traj-2"]
 
-    def test_split_partitions_source_trajectories(self):
+    def test_split_partitions_source_experiences(self):
         """Card from traj-1 + traj-2, split into A(traj-1) + B(traj-2)."""
         original = _make_card(title="Original")
         record_creation(
             original,
             [
-                SourceReference(id="traj-1", type="trajectory"),
-                SourceReference(id="traj-2", type="trajectory"),
+                SourceReference(id="traj-1", type="experience"),
+                SourceReference(id="traj-2", type="experience"),
             ],
             agent="organizer",
         )
@@ -571,14 +571,14 @@ class TestTraceability:
             original,
             [child_a, child_b],
             child_source_refs=[
-                [SourceReference(id="traj-1", type="trajectory")],
-                [SourceReference(id="traj-2", type="trajectory")],
+                [SourceReference(id="traj-1", type="experience")],
+                [SourceReference(id="traj-2", type="experience")],
             ],
             agent="organizer",
         )
 
-        assert get_source_trajectories(child_a) == ["traj-1"]
-        assert get_source_trajectories(child_b) == ["traj-2"]
+        assert get_source_experiences(child_a) == ["traj-1"]
+        assert get_source_experiences(child_b) == ["traj-2"]
 
     def test_merge_then_split_full_chain(self):
         """Create A from traj-1, B from traj-2, merge into C, split C into
@@ -586,14 +586,14 @@ class TestTraceability:
         card_a = _make_card(title="A")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         card_b = _make_card(title="B")
         record_creation(
             card_b,
-            [SourceReference(id="traj-2", type="trajectory")],
+            [SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
@@ -606,15 +606,15 @@ class TestTraceability:
             merged,
             [child_d, child_e],
             child_source_refs=[
-                [SourceReference(id="traj-1", type="trajectory")],
-                [SourceReference(id="traj-2", type="trajectory")],
+                [SourceReference(id="traj-1", type="experience")],
+                [SourceReference(id="traj-2", type="experience")],
             ],
             agent="organizer",
         )
 
-        # Each child traces to its relevant trajectory only
-        assert get_source_trajectories(child_d) == ["traj-1"]
-        assert get_source_trajectories(child_e) == ["traj-2"]
+        # Each child traces to its relevant experience only
+        assert get_source_experiences(child_d) == ["traj-1"]
+        assert get_source_experiences(child_e) == ["traj-2"]
 
         # Ancestry chain: D → merged → A, B
         all_cards = {
@@ -626,19 +626,19 @@ class TestTraceability:
         assert card_a.card_id in ancestry_d
         assert card_b.card_id in ancestry_d
 
-    def test_revision_after_merge_adds_new_trajectory(self):
-        """Merge A+B into C, then revise C → new card has all 3 trajectories."""
+    def test_revision_after_merge_adds_new_experience(self):
+        """Merge A+B into C, then revise C → new card has all 3 experiences."""
         card_a = _make_card(title="A")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         card_b = _make_card(title="B")
         record_creation(
             card_b,
-            [SourceReference(id="traj-2", type="trajectory")],
+            [SourceReference(id="traj-2", type="experience")],
             agent="organizer",
         )
 
@@ -648,28 +648,28 @@ class TestTraceability:
         revised = _make_card(title="Revised")
         revise_card(
             merged, revised,
-            new_source_refs=[SourceReference(id="traj-3", type="trajectory")],
+            new_source_refs=[SourceReference(id="traj-3", type="experience")],
             agent="organizer",
         )
 
-        assert set(get_source_trajectories(revised)) == {"traj-1", "traj-2", "traj-3"}
+        assert set(get_source_experiences(revised)) == {"traj-1", "traj-2", "traj-3"}
         # merged is superseded, revised is active
         assert merged.status == CardStatus.SUPERSEDED
         assert revised.status == CardStatus.ACTIVE
 
-    def test_find_cards_by_trajectory_after_operations(self):
+    def test_find_cards_by_experience_after_operations(self):
         """After create + merge, find_cards_by_source returns the right cards."""
         card_a = _make_card(title="A")
         record_creation(
             card_a,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
         card_b = _make_card(title="B")
         record_creation(
             card_b,
-            [SourceReference(id="traj-1", type="trajectory")],
+            [SourceReference(id="traj-1", type="experience")],
             agent="organizer",
         )
 
@@ -677,6 +677,6 @@ class TestTraceability:
         merge_cards([card_a, card_b], merged, agent="organizer")
 
         all_cards = [card_a, card_b, merged]
-        found = find_cards_by_source("traj-1", all_cards, source_type="trajectory")
+        found = find_cards_by_source("traj-1", all_cards, source_type="experience")
         # All 3 cards reference traj-1 (A directly, B directly, merged inherited)
         assert len(found) == 3

@@ -9,11 +9,11 @@ import pytest
 from agenix.parsers import (
     coerce_str,
     extract_json,
+    parse_experience,
     parse_insight_cards,
     parse_knowledge_actions,
     parse_problem,
     parse_reflection_cards,
-    parse_trajectory,
 )
 from agenix.storage.models import Difficulty, ReflectionCategory
 
@@ -107,7 +107,7 @@ class TestParseProblem:
         assert len(problem.test_cases) == 0
 
 
-class TestParseTrajectory:
+class TestParseExperience:
     def test_basic(self):
         output = json.dumps({
             "code_solution": "def solve(): pass",
@@ -115,11 +115,11 @@ class TestParseTrajectory:
             "is_correct": True,
             "test_results": [],
         })
-        traj = parse_trajectory(output, "prob_123")
-        assert traj.problem_id == "prob_123"
-        assert traj.code_solution == "def solve(): pass"
-        assert traj.is_correct is True
-        assert traj.completed_at is not None
+        exp = parse_experience(output, "prob_123")
+        assert exp.problem_id == "prob_123"
+        assert exp.code_solution == "def solve(): pass"
+        assert exp.is_correct is True
+        assert exp.completed_at is not None
 
     def test_with_test_results(self):
         output = json.dumps({
@@ -135,9 +135,9 @@ class TestParseTrajectory:
                 }
             ],
         })
-        traj = parse_trajectory(output, "p1")
-        assert len(traj.test_results) == 1
-        assert traj.test_results[0].passed is False
+        exp = parse_experience(output, "p1")
+        assert len(exp.test_results) == 1
+        assert exp.test_results[0].passed is False
 
 
 class TestParseReflectionCards:
@@ -154,10 +154,10 @@ class TestParseReflectionCards:
                 }
             ]
         })
-        cards = parse_reflection_cards(output, "traj_1")
+        cards = parse_reflection_cards(output, "exp_1")
         assert len(cards) == 1
         assert cards[0].title == "Good pattern"
-        assert cards[0].trajectory_id == "traj_1"
+        assert cards[0].experience_id == "exp_1"
         assert cards[0].category == ReflectionCategory.OPTIMIZATION
         assert cards[0].confidence == 0.9
 
@@ -174,7 +174,7 @@ class TestParseReflectionCards:
                 }
             ]
         })
-        cards = parse_reflection_cards(output, "traj_1")
+        cards = parse_reflection_cards(output, "exp_1")
         assert cards[0].category == ReflectionCategory.GENERAL
 
 

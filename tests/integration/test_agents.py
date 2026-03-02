@@ -3,9 +3,9 @@
 Tests each agent type against live infrastructure:
 - CURATOR: Loads real KernelBench data from HuggingFace
 - SOLVER: Runs real Claude agent with MCP tools (verifier + retriever)
-- CRITIC: Runs real Claude agent on a trajectory
-- ORGANIZER: Runs real Claude agent on trajectories + reflection cards
-- INSIGHT_FINDER: Runs real Claude agent on trajectory batches
+- CRITIC: Runs real Claude agent on an experience
+- ORGANIZER: Runs real Claude agent on experiences + reflection cards
+- INSIGHT_FINDER: Runs real Claude agent on experience batches
 
 Requires:
 - HuggingFace dataset access (for curator)
@@ -59,8 +59,8 @@ def problems_queue(config):
 
 
 @pytest.fixture(scope="module")
-def trajectories_queue(config):
-    q = FSQueue("trajectories", config.storage)
+def experiences_queue(config):
+    q = FSQueue("experiences", config.storage)
     q.initialize()
     return q
 
@@ -131,7 +131,7 @@ class TestSolverIntegration:
     """Tests solver against real Claude API + verifier + retriever."""
 
     @pytest.fixture(scope="class")
-    def solver_deps(self, config, fs_backend, problems_queue, trajectories_queue):
+    def solver_deps(self, config, fs_backend, problems_queue, experiences_queue):
         """Set up solver dependencies with live services."""
         from agenix.runner import ClaudeRunner
         from agenix.tools.loader import load_tool
@@ -178,11 +178,11 @@ class TestSolverIntegration:
 
         runner = ClaudeRunner(tool_registry=registry)
 
-        return runner, fs_backend, store, trajectories_queue
+        return runner, fs_backend, store, experiences_queue
 
     def test_solve_simple_kernel(self, solver_deps, problems_queue, config):
         """Solver should attempt to solve a level_1 problem."""
-        runner, fs_backend, store, traj_queue = solver_deps
+        runner, fs_backend, store, exp_queue = solver_deps
 
         from agenix.agents.solver_handler import SolverHandler
 
@@ -228,16 +228,15 @@ class TestSolverIntegration:
             runner=runner,
             fs_backend=fs_backend,
             knowledge_store=store,
-            trajectories_queue=traj_queue,
-            run_tag="test_integration",
+            experiences_queue=exp_queue,
         )
 
         try:
             handler.handle(message)
             problems_queue.complete(message.message_id)
 
-            # Verify trajectory was enqueued
-            assert traj_queue.count(MessageState.PENDING) > 0
+            # Verify experience was enqueued
+            assert exp_queue.count(MessageState.PENDING) > 0
 
             # Verify problem status was updated
             updated = fs_backend.get_problem(problem.problem_id)
@@ -255,11 +254,11 @@ class TestSolverIntegration:
 class TestCriticIntegration:
     """Tests critic against real Claude API."""
 
-    def test_critique_trajectory(self, config, fs_backend, trajectories_queue):
-        """Critic should produce reflection cards from a trajectory."""
+    def test_critique_experience(self, config, fs_backend, experiences_queue):
+        """Critic should produce reflection cards from an experience."""
         from agenix.agents.critic_handler import CriticHandler
         from agenix.runner import ClaudeRunner
-        from agenix.storage.models import Trajectory
+        from agenix.storage.models import Experience
         from tools.knowledge.baseline.store import KnowledgeStore
 
         store = KnowledgeStore(config=config, fs_backend=fs_backend)
@@ -267,7 +266,7 @@ class TestCriticIntegration:
 
         runner = ClaudeRunner()
 
-        # Create test problem and trajectory
+        # Create test problem and experience
         problem = Problem(
             title="Test Problem for Critic",
             description="A simple test problem",
@@ -276,25 +275,24 @@ class TestCriticIntegration:
         )
         fs_backend.save_problem(problem)
 
-        trajectory = Trajectory(
+        experience = Experience(
             problem_id=problem.problem_id,
             code_solution="class ModelNew(nn.Module): pass",
             final_answer="Simple passthrough",
             is_correct=False,
         )
-        fs_backend.save_trajectory(trajectory, "test_integration")
+        fs_backend.save_experience(experience)
 
-        # Enqueue trajectory message
-        trajectories_queue.enqueue(
+        # Enqueue experience message
+        experiences_queue.enqueue(
             "test",
             {
-                "trajectory_id": trajectory.trajectory_id,
+                "experience_id": experience.experience_id,
                 "problem_id": problem.problem_id,
-                "run_tag": "test_integration",
             },
         )
 
-        message = trajectories_queue.dequeue()
+        message = experiences_queue.dequeue()
         assert message is not None
 
         handler = CriticHandler(
@@ -305,10 +303,10 @@ class TestCriticIntegration:
 
         try:
             handler.handle(message)
-            trajectories_queue.complete(message.message_id)
+            experiences_queue.complete(message.message_id)
             # If we get here, the critic produced output successfully
         except Exception as e:
-            trajectories_queue.fail(message.message_id, str(e))
+            experiences_queue.fail(message.message_id, str(e))
             pytest.fail(f"Critic handler failed: {e}")
 
 
@@ -321,10 +319,10 @@ class TestOrganizerIntegration:
     """Tests organizer against real Claude API."""
 
     def test_organize_knowledge(self, config, fs_backend):
-        """Organizer should produce knowledge cards from trajectories."""
+        """Organizer should produce knowledge cards from experiences."""
         from agenix.agents.organizer_handler import OrganizerHandler
         from agenix.runner import ClaudeRunner
-        from agenix.storage.models import Trajectory
+        from agenix.storage.models import Experience
         from tools.knowledge.baseline.store import KnowledgeStore
 
         store = KnowledgeStore(config=config, fs_backend=fs_backend)
@@ -332,7 +330,7 @@ class TestOrganizerIntegration:
 
         runner = ClaudeRunner()
 
-        # Create a problem + trajectory for the organizer to analyze
+        # Create a problem + experience for the organizer to analyze
         problem = Problem(
             title="Test Problem for Organizer",
             description="GPU kernel optimization problem",
@@ -341,19 +339,18 @@ class TestOrganizerIntegration:
         )
         fs_backend.save_problem(problem)
 
-        trajectory = Trajectory(
+        experience = Experience(
             problem_id=problem.problem_id,
             code_solution="@triton.jit\ndef kernel(): pass\n\nclass ModelNew: pass",
             final_answer="Used tiling strategy for matmul",
             is_correct=True,
         )
-        fs_backend.save_trajectory(trajectory, "test_integration")
+        fs_backend.save_experience(experience)
 
         handler = OrganizerHandler(
             runner=runner,
             fs_backend=fs_backend,
             knowledge_store=store,
-            run_tag="test_integration",
         )
 
         # Should not raise
@@ -369,10 +366,10 @@ class TestInsightFinderIntegration:
     """Tests insight finder against real Claude API."""
 
     def test_find_insights(self, config, fs_backend):
-        """Insight finder should produce insight cards from trajectories."""
+        """Insight finder should produce insight cards from experiences."""
         from agenix.agents.insight_handler import InsightHandler
         from agenix.runner import ClaudeRunner
-        from agenix.storage.models import Trajectory
+        from agenix.storage.models import Experience
         from tools.knowledge.baseline.store import KnowledgeStore
 
         store = KnowledgeStore(config=config, fs_backend=fs_backend)
@@ -380,7 +377,7 @@ class TestInsightFinderIntegration:
 
         runner = ClaudeRunner()
 
-        # Create multiple trajectories for pattern detection
+        # Create multiple experiences for pattern detection
         for i in range(3):
             problem = Problem(
                 title=f"Insight Test Problem {i}",
@@ -390,19 +387,18 @@ class TestInsightFinderIntegration:
             )
             fs_backend.save_problem(problem)
 
-            trajectory = Trajectory(
+            experience = Experience(
                 problem_id=problem.problem_id,
                 code_solution=f"# Kernel {i}\nclass ModelNew: pass",
                 final_answer=f"Attempt {i}",
                 is_correct=(i % 2 == 0),
             )
-            fs_backend.save_trajectory(trajectory, "test_integration")
+            fs_backend.save_experience(experience)
 
         handler = InsightHandler(
             runner=runner,
             fs_backend=fs_backend,
             knowledge_store=store,
-            run_tag="test_integration",
         )
 
         # Should not raise

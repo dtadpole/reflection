@@ -1,1 +1,1 @@
-"""Persistence layer: Pydantic models, SQLite backend, trajectory storage."""
+"""Persistence layer: Pydantic models, filesystem backend, experience storage."""

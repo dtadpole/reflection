@@ -2,7 +2,7 @@
 
 Captures orchestration steps (message lifecycle, agent invocations,
 knowledge retrieval, output parsing, etc.) as append-only JSONL.
-Separate from trajectories which record agent-LLM conversation turns.
+Separate from experiences which record agent-LLM conversation turns.
 """
 
 from __future__ import annotations
@@ -248,5 +248,5 @@ def create_execution_logger(
         run_tag: The run tag for this execution.
         agent: Default agent name for events.
     """
-    log_path = storage_config.execution_log_path(run_tag)
+    log_path = storage_config.execution_log_path(run_tag, agent=agent)
     return ExecutionLogger(log_path=log_path, run_tag=run_tag, agent=agent)

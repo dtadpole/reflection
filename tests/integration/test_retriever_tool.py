@@ -173,7 +173,7 @@ SAMPLE_CARDS = [
             "drops the remainder block, silently producing wrong results "
             "on inputs not divisible by BLOCK_SIZE."
         ),
-        trajectory_id="traj-001",
+        experience_id="exp-001",
         category=ReflectionCategory.DEBUGGING,
         confidence=0.95,
         tags=["triton", "grid", "off-by-one"],
@@ -415,7 +415,7 @@ class TestRetrieverBaseline:
         from agenix.storage.models import SourceReference
 
         old_card = next(c for c in SAMPLE_CARDS if "ReLU" in c.title)
-        record_creation(old_card, [SourceReference(id="traj-002", type="trajectory")])
+        record_creation(old_card, [SourceReference(id="traj-002", type="experience")])
 
         new_card = KnowledgeCard(
             title="Fused ReLU activation patterns",

@@ -14,15 +14,16 @@ from typing import Any, Optional, Protocol
 from agenix.config import ReflectionConfig
 from agenix.loader import load_agent
 from agenix.parsers import (
+    parse_experience,
     parse_insight_cards,
     parse_knowledge_actions,
     parse_problem,
     parse_reflection_cards,
-    parse_trajectory,
 )
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.lineage import record_creation
 from agenix.storage.models import (
+    Experience,
     InsightCard,
     IterationResult,
     KnowledgeCard,
@@ -31,7 +32,6 @@ from agenix.storage.models import (
     ProblemStatus,
     ReflectionCard,
     SourceReference,
-    Trajectory,
 )
 from tools.knowledge.baseline.store import KnowledgeStore
 
@@ -93,19 +93,19 @@ class Pipeline:
         logger.info("Curator produced problem: %s (%s)", problem.title, problem.problem_id)
 
         # Step 2: Solver
-        trajectory = self._run_solver(run_tag, problem)
+        experience = self._run_solver(run_tag, problem)
         logger.info(
-            "Solver finished: correct=%s, trajectory=%s",
-            trajectory.is_correct,
-            trajectory.trajectory_id,
+            "Solver finished: correct=%s, experience=%s",
+            experience.is_correct,
+            experience.experience_id,
         )
 
         # Step 3: Critic
-        reflection_cards = self._run_critic(run_tag, problem, trajectory)
+        reflection_cards = self._run_critic(run_tag, problem, experience)
         logger.info("Critic produced %d reflection cards", len(reflection_cards))
 
         # Step 4: Organizer
-        knowledge_cards = self._run_organizer(run_tag, problem, trajectory, reflection_cards)
+        knowledge_cards = self._run_organizer(run_tag, problem, experience, reflection_cards)
         logger.info("Organizer produced %d knowledge cards", len(knowledge_cards))
 
         # Step 5: Insight Finder (periodic)
@@ -123,8 +123,8 @@ class Pipeline:
         return IterationResult(
             run_tag=run_tag,
             problem_id=problem.problem_id,
-            trajectory_id=trajectory.trajectory_id,
-            is_correct=trajectory.is_correct,
+            experience_id=experience.experience_id,
+            is_correct=experience.is_correct,
             cards_created=all_card_ids,
         )
 
@@ -151,7 +151,7 @@ class Pipeline:
         self._fs.save_problem(problem)
         return problem
 
-    def _run_solver(self, run_tag: str, problem: Problem) -> Trajectory:
+    def _run_solver(self, run_tag: str, problem: Problem) -> Experience:
         agent = load_agent("solver")
 
         # Retrieve relevant knowledge
@@ -172,32 +172,32 @@ class Pipeline:
 
         self._fs.update_problem_status(problem.problem_id, ProblemStatus.SOLVING)
         result = self._runner.run(agent, input_payload)
-        trajectory = parse_trajectory(result.output, problem.problem_id)
-        self._fs.save_trajectory(trajectory, run_tag)
+        experience = parse_experience(result.output, problem.problem_id)
+        self._fs.save_experience(experience)
 
-        new_status = ProblemStatus.SOLVED if trajectory.is_correct else ProblemStatus.FAILED
+        new_status = ProblemStatus.SOLVED if experience.is_correct else ProblemStatus.FAILED
         self._fs.update_problem_status(problem.problem_id, new_status)
-        return trajectory
+        return experience
 
     def _run_critic(
         self,
         run_tag: str,
         problem: Problem,
-        trajectory: Trajectory,
+        experience: Experience,
     ) -> list[ReflectionCard]:
         agent = load_agent("critic")
 
         input_payload = json.dumps({
             "problem": json.loads(problem.model_dump_json()),
-            "trajectory": json.loads(trajectory.model_dump_json()),
+            "experience": json.loads(experience.model_dump_json()),
         })
 
         result = self._runner.run(agent, input_payload)
-        cards = parse_reflection_cards(result.output, trajectory.trajectory_id)
+        cards = parse_reflection_cards(result.output, experience.experience_id)
 
         for card in cards:
             source_refs = [
-                SourceReference(id=trajectory.trajectory_id, type="trajectory"),
+                SourceReference(id=experience.experience_id, type="experience"),
             ]
             record_creation(card, source_refs, agent="critic", run_tag=run_tag)
             self._store.add_card(card)
@@ -208,13 +208,13 @@ class Pipeline:
         self,
         run_tag: str,
         problem: Problem,
-        trajectory: Trajectory,
+        experience: Experience,
         reflection_cards: list[ReflectionCard],
     ) -> list[KnowledgeCard]:
         agent = load_agent("organizer")
 
         input_payload = json.dumps({
-            "trajectory": json.loads(trajectory.model_dump_json()),
+            "experience": json.loads(experience.model_dump_json()),
             "reflection_cards": [
                 json.loads(c.model_dump_json()) for c in reflection_cards
             ],
@@ -226,7 +226,7 @@ class Pipeline:
 
         for card in cards:
             source_refs = [
-                SourceReference(id=trajectory.trajectory_id, type="trajectory"),
+                SourceReference(id=experience.experience_id, type="experience"),
             ] + [
                 SourceReference(id=rc.card_id, type="reflection")
                 for rc in reflection_cards
@@ -241,21 +241,21 @@ class Pipeline:
     ) -> list[InsightCard]:
         agent = load_agent("insight_finder")
 
-        recent = self._fs.list_trajectories(limit=20)
+        recent = self._fs.list_experiences(limit=20)
         if not recent:
             return []
 
-        trajectories_data = []
-        for t in recent:
-            problem = self._fs.get_problem(t.problem_id)
-            trajectories_data.append({
+        experiences_data = []
+        for e in recent:
+            problem = self._fs.get_problem(e.problem_id)
+            experiences_data.append({
                 "problem": json.loads(problem.model_dump_json()) if problem else {},
-                "trajectory": json.loads(t.model_dump_json()),
+                "experience": json.loads(e.model_dump_json()),
             })
 
         input_payload = json.dumps({
-            "trajectories": trajectories_data,
-            "batch_info": {"run_tags": [run_tag], "total_count": len(recent)},
+            "experiences": experiences_data,
+            "batch_info": {"total_count": len(recent)},
         })
 
         result = self._runner.run(agent, input_payload)
@@ -263,8 +263,8 @@ class Pipeline:
 
         for card in cards:
             source_refs = [
-                SourceReference(id=t.trajectory_id, type="trajectory")
-                for t in recent
+                SourceReference(id=e.experience_id, type="experience")
+                for e in recent
             ]
             record_creation(card, source_refs, agent="insight_finder", run_tag=run_tag)
             self._store.add_card(card)

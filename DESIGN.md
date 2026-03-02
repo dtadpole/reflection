@@ -16,7 +16,7 @@ queues and a shared knowledge base.
     │             ▲  │              ▲
     └─────────────┘  │              │
        (iterate)     ▼              │
-              [trajectories queue]  │
+              [experiences queue]   │
                          │          │
                          ▼          │
                       CRITIC        │
@@ -34,7 +34,7 @@ queues and a shared knowledge base.
 | Queue | Producer | Consumer | Payload |
 |-------|----------|----------|---------|
 | `problems` | CURATOR | SOLVER | `{problem_id, title}` |
-| `trajectories` | SOLVER | CRITIC | `{trajectory_id, problem_id, run_tag}` |
+| `experiences` | SOLVER | CRITIC | `{experience_id, problem_id}` |
 
 ### Agent Types
 
@@ -42,7 +42,7 @@ queues and a shared knowledge base.
 |-------|-----------|-------------|
 | CURATOR | One-shot | Pure Python KernelBench loader (no LLM) |
 | SOLVER | QueueAgentLoop | Polls problems queue, writes Triton kernels |
-| CRITIC | QueueAgentLoop | Polls trajectories queue, produces reflection cards |
+| CRITIC | QueueAgentLoop | Polls experiences queue, produces reflection cards |
 | ORGANIZER | ScheduledAgentLoop (5 min) | Synthesizes knowledge from recent data |
 | INSIGHT_FINDER | ScheduledAgentLoop (10 min) | Cross-cutting meta-pattern detection |
 
@@ -88,18 +88,18 @@ a query engine over these files (no persistent database).
 │   │   │   ├── processing/<message_id>.json
 │   │   │   ├── done/<message_id>.json
 │   │   │   └── failed/<message_id>.json
-│   │   └── trajectories/                  ← SOLVER → CRITIC
+│   │   └── experiences/                   ← SOLVER → CRITIC
 │   │       ├── pending/
 │   │       ├── processing/
 │   │       ├── done/
 │   │       └── failed/
-│   ├── run_20260228_143000/               ← run_tag
-│   │   ├── curator/
-│   │   │   └── <problem_id>.json          ← proposed problems
+│   ├── experiences/                       ← shared across runs
 │   │   ├── solver/
-│   │   │   └── <trajectory_id>.json       ← solver trajectories
-│   └── run_20260228_150000/
-│       └── ...
+│   │   │   └── <experience_id>.jsonl      ← solver experiences
+│   │   ├── critic/
+│   │   │   └── ...
+│   │   └── <agent_name>/
+│   │       └── ...
 ├── int/
 │   └── ...
 └── test_zhenchen/
@@ -108,8 +108,7 @@ a query engine over these files (no persistent database).
 
 ### Storage Rules
 
-- **Shared data** (`problems/`, `cards/`, `lance/`) lives at the env level, persists across runs
-- **Per-run data** lives under `<run_tag>/<agent_name>/`, one JSON file per entity
+- **Shared data** (`problems/`, `cards/`, `experiences/`, `lance/`) lives at the env level, persists across runs
 - **Each JSON file** is a serialized Pydantic model (via `.model_dump(mode="json")`)
 - **DuckDB queries** scan JSON files on demand: `read_json_auto('problems/*.json')`
 - **LanceDB** stores vector embeddings for semantic search over cards
@@ -140,14 +139,14 @@ modified and it is never deleted.
 
 Every knowledge card carries an append-only lineage log that records how it was
 created and evolved. This enables tracing any card back to its source
-trajectories, reflection cards, and predecessor cards.
+experiences, reflection cards, and predecessor cards.
 
 ### Lineage Model
 
 ```
 Card
 ├── status: active | superseded | archived
-├── source_refs: [{id, type}]          ← typed references (trajectory, reflection, card)
+├── source_refs: [{id, type}]          ← typed references (experience, reflection, card)
 ├── source_ids: [str]                  ← kept in sync with source_refs for compat
 ├── predecessor_ids: [str]             ← cards that were inputs (merge/split/revision)
 ├── superseded_by: str | null          ← quick lookup for replacement card
@@ -167,7 +166,7 @@ All operations follow the immutable storage principle: existing cards are
 never modified (only their status/superseded_by fields are updated for
 archiving). New content always goes into a new card.
 
-- **Create**: Card created from trajectory + reflection cards → `source_refs` populated
+- **Create**: Card created from experience + reflection cards → `source_refs` populated
 - **Revise**: NEW card created with updated content. Old card superseded (`superseded_by`
   → new card, new card `predecessor_ids` → old card). New card inherits `source_refs`
   from old + any new sources.
@@ -181,7 +180,7 @@ archiving). New content always goes into a new card.
 ### Reverse Lookups
 
 - `find_cards_by_source(source_id)` → cards referencing that source
-- `get_source_trajectories(card)` → trajectory IDs from source_refs
+- `get_source_experiences(card)` → experience IDs from source_refs
 - `get_card_ancestry(card, all_cards)` → recursive predecessor chain
 
 ## Legend
