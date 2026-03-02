@@ -173,7 +173,6 @@ class Pipeline:
         self._fs.update_problem_status(problem.problem_id, ProblemStatus.SOLVING)
         result = self._runner.run(agent, input_payload)
         experience = parse_experience(result.output, problem.problem_id)
-        self._fs.save_experience(experience)
 
         new_status = ProblemStatus.SOLVED if experience.is_correct else ProblemStatus.FAILED
         self._fs.update_problem_status(problem.problem_id, new_status)

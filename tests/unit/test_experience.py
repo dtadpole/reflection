@@ -67,9 +67,11 @@ class TestExperienceHelpers:
         e1 = Experience(problem_id=p.problem_id, is_correct=True)
         e2 = Experience(problem_id=p.problem_id, is_correct=False)
         e3 = Experience(problem_id=p.problem_id, is_correct=True)
-        backend.save_experience(e1)
-        backend.save_experience(e2)
-        backend.save_experience(e3)
+        from agenix.storage.fs_backend import _write_json
+
+        for e in (e1, e2, e3):
+            path = backend.experiences_dir() / f"{e.experience_id}.json"
+            _write_json(path, e)
 
         rate = success_rate(backend)
         assert abs(rate - 2 / 3) < 0.01

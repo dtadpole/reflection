@@ -294,10 +294,6 @@ class TestPipelineSolver:
         assert exp.is_correct is True
         assert exp.code_solution == "def solve(s): return s[::-1]"
 
-        # Experience was saved
-        loaded = fs.get_experience(exp.experience_id)
-        assert loaded is not None
-
         # Problem status updated
         loaded_problem = fs.get_problem(problem.problem_id)
         assert loaded_problem.status.value == "solved"

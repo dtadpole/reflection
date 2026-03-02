@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agenix.config import StorageConfig
-from agenix.storage.fs_backend import FSBackend
+from agenix.storage.fs_backend import FSBackend, _write_json
 from agenix.storage.models import (
     CardType,
     Difficulty,
@@ -21,6 +21,12 @@ from agenix.storage.models import (
     StepType,
     TestCase,
 )
+
+
+def _write_experience(backend: FSBackend, exp: Experience, agent: str = "solver") -> None:
+    """Test helper: write an Experience as JSON (replaces removed save_experience)."""
+    path = backend.experiences_dir(agent) / f"{exp.experience_id}.json"
+    _write_json(path, exp)
 
 
 @pytest.fixture
@@ -141,7 +147,7 @@ class TestProblemCRUD:
 
 class TestExperienceCRUD:
     def test_save_and_get(self, backend, sample_experience):
-        backend.save_experience(sample_experience)
+        _write_experience(backend,sample_experience)
         loaded = backend.get_experience(sample_experience.experience_id)
         assert loaded is not None
         assert len(loaded.steps) == 2
@@ -153,8 +159,8 @@ class TestExperienceCRUD:
     def test_list_experiences(self, backend, sample_problem):
         e1 = Experience(problem_id=sample_problem.problem_id, is_correct=True)
         e2 = Experience(problem_id=sample_problem.problem_id, is_correct=False)
-        backend.save_experience(e1)
-        backend.save_experience(e2)
+        _write_experience(backend,e1)
+        _write_experience(backend,e2)
 
         all_e = backend.list_experiences()
         assert len(all_e) == 2
@@ -165,8 +171,8 @@ class TestExperienceCRUD:
     def test_count(self, backend, sample_problem):
         e1 = Experience(problem_id=sample_problem.problem_id, is_correct=True)
         e2 = Experience(problem_id=sample_problem.problem_id, is_correct=False)
-        backend.save_experience(e1)
-        backend.save_experience(e2)
+        _write_experience(backend,e1)
+        _write_experience(backend,e2)
         assert backend.count_experiences() == 2
         assert backend.count_experiences(is_correct=True) == 1
 
@@ -280,7 +286,7 @@ class TestDuckDBQueries:
         assert len(results) == 1
 
     def test_query_experiences(self, backend, sample_experience):
-        backend.save_experience(sample_experience)
+        _write_experience(backend,sample_experience)
         results = backend.query_experiences()
         assert len(results) == 1
 

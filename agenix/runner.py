@@ -32,6 +32,8 @@ class AgentResult:
     cost_usd: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
+    conversation_path: Optional[Path] = None
+    experience_id: Optional[str] = None
 
 # Short model name -> full model ID
 _MODEL_MAP: dict[str, str] = {
@@ -49,6 +51,24 @@ def resolve_model(short_name: str) -> str:
     return _MODEL_MAP.get(short_name, short_name)
 
 
+def _parse_thinking(value: str) -> dict:
+    """Parse a thinking config string into a ThinkingConfig dict.
+
+    Accepted formats:
+      "adaptive"        → {"type": "adaptive"}
+      "disabled"        → {"type": "disabled"}
+      "enabled:10000"   → {"type": "enabled", "budget_tokens": 10000}
+    """
+    if value == "adaptive":
+        return {"type": "adaptive"}
+    if value == "disabled":
+        return {"type": "disabled"}
+    if value.startswith("enabled:"):
+        budget = int(value.split(":", 1)[1])
+        return {"type": "enabled", "budget_tokens": budget}
+    raise ValueError(f"Invalid thinking config: {value!r}")
+
+
 class ClaudeRunner:
     """AgentRunner implementation using claude_agent_sdk.query()."""
 
@@ -57,27 +77,41 @@ class ClaudeRunner:
         tool_registry: Optional[ToolRegistry] = None,
         cwd: Optional[Path] = None,
         run_dir: Optional[Path] = None,
+        experiences_dir: Optional[Path] = None,
     ) -> None:
         self._registry = tool_registry
         self._cwd = cwd
         self._run_dir = run_dir
+        self._experiences_dir = experiences_dir
 
-    def run(self, agent: LoadedAgent, input_payload: str) -> AgentResult:
+    def run(
+        self,
+        agent: LoadedAgent,
+        input_payload: str,
+        *,
+        conversation_path: Path | None = None,
+    ) -> AgentResult:
         """Run an agent synchronously. Implements the AgentRunner protocol.
 
         Each agent call gets its own asyncio.run() for clean isolation.
-        If run_dir is set, a conversation JSONL file is automatically created
-        at <run_dir>/<ulid>.jsonl capturing the full LLM conversation.
+        Conversation is logged as JSONL to *conversation_path* (if given),
+        or to a new file under *run_dir*, or not at all.
         """
-        return asyncio.run(self._run_async(agent, input_payload))
+        return asyncio.run(
+            self._run_async(agent, input_payload, conversation_path=conversation_path)
+        )
 
     async def _run_async(
         self,
         agent: LoadedAgent,
         input_payload: str,
+        *,
+        conversation_path: Path | None = None,
     ) -> AgentResult:
         """Run an agent asynchronously via claude_agent_sdk.query()."""
-        conv = self._make_conversation_logger()
+        conv, experience_id = self._make_conversation_logger(
+            agent.name, conversation_path,
+        )
         options = self._build_options(agent)
 
         logger.info(
@@ -128,6 +162,8 @@ class ClaudeRunner:
             cost_usd=result_message.total_cost_usd or 0.0,
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
+            conversation_path=conv.path,
+            experience_id=experience_id,
         )
 
         logger.info(
@@ -227,6 +263,8 @@ class ClaudeRunner:
             model=resolve_model(agent.config.model),
             system_prompt=agent.system_prompt or None,
             max_turns=agent.config.max_turns,
+            thinking=_parse_thinking(agent.config.thinking),
+            effort=agent.config.effort,
             permission_mode="bypassPermissions",
             # Clear CLAUDECODE so the spawned CLI doesn't refuse to run
             # as a "nested session" when invoked from within Claude Code.
@@ -242,11 +280,27 @@ class ClaudeRunner:
 
         return options
 
-    def _make_conversation_logger(self) -> ConversationLogger:
-        """Create a ConversationLogger for this run, or a no-op if no run_dir."""
-        if self._run_dir is None:
-            return NullConversationLogger()
+    def _make_conversation_logger(
+        self,
+        agent_name: str,
+        conversation_path: Path | None = None,
+    ) -> tuple[ConversationLogger, str | None]:
+        """Create a ConversationLogger and return (logger, experience_id).
+
+        Priority: explicit *conversation_path* > experiences_dir > run_dir > no-op.
+        """
         from ulid import ULID
 
-        path = self._run_dir / f"{ULID()}.jsonl"
-        return ConversationLogger(path)
+        if conversation_path is not None:
+            # Derive experience_id from filename (stem)
+            eid = conversation_path.stem
+            return ConversationLogger(conversation_path), eid
+        if self._experiences_dir is not None:
+            eid = str(ULID())
+            path = self._experiences_dir / agent_name.lower() / f"{eid}.jsonl"
+            logger.info("Experience log: %s", path)
+            return ConversationLogger(path), eid
+        if self._run_dir is not None:
+            eid = str(ULID())
+            return ConversationLogger(self._run_dir / f"{eid}.jsonl"), eid
+        return NullConversationLogger(), None

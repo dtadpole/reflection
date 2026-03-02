@@ -87,7 +87,9 @@ def parse_problem(output: str) -> Problem:
     )
 
 
-def parse_experience(output: str, problem_id: str) -> Experience:
+def parse_experience(
+    output: str, problem_id: str, *, experience_id: str | None = None,
+) -> Experience:
     """Parse solver output into an Experience."""
     data = extract_json(output)
     test_results = []
@@ -105,7 +107,7 @@ def parse_experience(output: str, problem_id: str) -> Experience:
             actual_output=tr.get("actual_output", ""),
             error=tr.get("error", ""),
         ))
-    return Experience(
+    kwargs: dict = dict(
         problem_id=problem_id,
         code_solution=data.get("code_solution", ""),
         final_answer=data.get("final_answer", ""),
@@ -113,6 +115,9 @@ def parse_experience(output: str, problem_id: str) -> Experience:
         test_results=test_results,
         completed_at=datetime.now(timezone.utc),
     )
+    if experience_id is not None:
+        kwargs["experience_id"] = experience_id
+    return Experience(**kwargs)
 
 
 def parse_reflection_cards(

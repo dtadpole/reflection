@@ -10,7 +10,6 @@ import json
 import logging
 
 from agenix.loader import load_agent
-from agenix.parsers import parse_experience
 from agenix.queue.fs_queue import FSQueue
 from agenix.queue.models import QueueMessage
 from agenix.runner import ClaudeRunner
@@ -75,33 +74,29 @@ class SolverHandler:
             "previous_attempts": [],
         })
 
-        # Run solver agent
+        # Run solver agent — conversation is streamed to experience JSONL by runner
         self._fs.update_problem_status(problem_id, ProblemStatus.SOLVING)
         agent = load_agent("solver")
         result = self._runner.run(agent, input_payload)
 
-        # Parse experience
-        experience = parse_experience(result.output, problem_id)
-
-        self._fs.save_experience(experience)
-
-        new_status = (
-            ProblemStatus.SOLVED if experience.is_correct else ProblemStatus.FAILED
-        )
+        # Update problem status based on result
+        is_error = result.output == "" or result.experience_id is None
+        new_status = ProblemStatus.FAILED if is_error else ProblemStatus.SOLVED
         self._fs.update_problem_status(problem_id, new_status)
 
         # Enqueue for critic
-        self._exp_queue.initialize()
-        self._exp_queue.enqueue(
-            sender="solver",
-            payload={
-                "experience_id": experience.experience_id,
-                "problem_id": problem_id,
-            },
-        )
+        if result.experience_id:
+            self._exp_queue.initialize()
+            self._exp_queue.enqueue(
+                sender="solver",
+                payload={
+                    "experience_id": result.experience_id,
+                    "problem_id": problem_id,
+                },
+            )
 
         logger.info(
-            "Solver finished: correct=%s, experience=%s",
-            experience.is_correct,
-            experience.experience_id,
+            "Solver finished: experience=%s, status=%s",
+            result.experience_id,
+            new_status.value,
         )

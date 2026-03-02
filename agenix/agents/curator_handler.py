@@ -7,8 +7,11 @@ FSBackend, and enqueues to the problems queue.
 
 from __future__ import annotations
 
+import json
 import logging
 import random
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from agenix.queue.fs_queue import FSQueue, MessageState
@@ -90,6 +93,13 @@ def row_to_problem(row: dict) -> Problem:
     )
 
 
+def _append_jsonl(path: Path, record: dict) -> None:
+    """Append a single JSON record to a JSONL file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
+
+
 def run_curator(
     fs_backend: FSBackend,
     queue: FSQueue,
@@ -98,12 +108,24 @@ def run_curator(
     levels: Optional[list[str]] = None,
     seed: Optional[int] = None,
     max_pending: int = 100,
+    conversation_path: Optional[Path] = None,
 ) -> list[Problem]:
     """Load KernelBench problems, dedup, save, and enqueue.
 
     Returns the list of newly created problems.
     """
     queue.initialize()
+
+    def _log(event: str, **data: object) -> None:
+        if conversation_path is not None:
+            _append_jsonl(conversation_path, {
+                "role": "system",
+                "event": event,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                **data,
+            })
+
+    _log("curator_start", n=n, levels=levels, max_pending=max_pending)
 
     # Stop early if the pending queue is already full enough
     pending_count = queue.count(MessageState.PENDING)
@@ -113,12 +135,14 @@ def run_curator(
             pending_count,
             max_pending,
         )
+        _log("curator_skip", pending_count=pending_count)
         return []
 
     # Load existing problem titles for dedup
     existing_titles = {p.title for p in fs_backend.list_problems(limit=1000)}
 
     rows = load_kernelbench(levels=levels)
+    _log("dataset_loaded", total_rows=len(rows))
     sampled = sample_problems(rows, n, seed=seed)
 
     created = []
@@ -130,6 +154,7 @@ def run_curator(
                 max_pending,
                 max_pending,
             )
+            _log("queue_full", pending=max_pending)
             break
 
         problem = row_to_problem(row)
@@ -147,10 +172,16 @@ def run_curator(
         )
         existing_titles.add(problem.title)
         created.append(problem)
+        _log("problem_created", problem_id=problem.problem_id, title=problem.title)
 
     logger.info(
         "Curator created %d problems (%d skipped as duplicates)",
         len(created),
         len(sampled) - len(created),
+    )
+    _log(
+        "curator_done",
+        created=len(created),
+        skipped=len(sampled) - len(created),
     )
     return created

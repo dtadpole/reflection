@@ -76,6 +76,7 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
     fs.initialize()
 
     run_dir = config.storage.run_path(run_tag) if run_tag else None
+    experiences_dir = config.storage.experiences_path
 
     ep_two = _find_endpoint_by_name(config, "_two")
     ep_one = _find_endpoint_by_name(config, "_one")
@@ -119,7 +120,9 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
         verifier_def = load_tool("verifier", variant="kb_eval")
         registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
 
-    runner = ClaudeRunner(tool_registry=registry, run_dir=run_dir)
+    runner = ClaudeRunner(
+        tool_registry=registry, run_dir=run_dir, experiences_dir=experiences_dir,
+    )
     pipeline = Pipeline(
         config=config,
         runner=runner,
@@ -264,12 +267,18 @@ def agent_curator(
     fs = FSBackend(cfg.storage)
     fs.initialize()
 
+    from ulid import ULID
+
     from agenix.agents.curator_handler import run_curator
     from agenix.queue.fs_queue import FSQueue
 
     queue = FSQueue("problems", cfg.storage)
     level_list = levels.split(",") if levels else None
-    problems = run_curator(fs, queue, n=n, levels=level_list, seed=seed)
+    experience_id = str(ULID())
+    conv_path = cfg.storage.experiences_path / "curator" / f"{experience_id}.jsonl"
+    problems = run_curator(
+        fs, queue, n=n, levels=level_list, seed=seed, conversation_path=conv_path,
+    )
     typer.echo(f"Created {len(problems)} problems.")
 
 
@@ -279,18 +288,23 @@ def agent_solver(
     env: Optional[str] = typer.Option(None, "--env", help="Environment."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging."),
 ) -> None:
-    """Run the solver agent (polls problems queue)."""
+    """Take one problem from the queue, solve it, and exit."""
     cfg = _load_config(config, env)
     _setup_logging(verbose, log_file=make_log_path(cfg.storage.logs_path, "solver"))
     run_tag = _make_run_tag("solver")
     pipeline, runner, fs = _bootstrap(cfg, run_tag=run_tag)
 
-    from agenix.agent_loop import QueueAgentLoop
     from agenix.agents.solver_handler import SolverHandler
     from agenix.queue.fs_queue import FSQueue
 
     problems_q = FSQueue("problems", cfg.storage)
+    problems_q.initialize()
     experiences_q = FSQueue("experiences", cfg.storage)
+
+    message = problems_q.dequeue()
+    if message is None:
+        typer.echo("No problems in queue.")
+        raise typer.Exit()
 
     handler = SolverHandler(
         runner=runner,
@@ -299,9 +313,19 @@ def agent_solver(
         experiences_queue=experiences_q,
         run_tag=run_tag,
     )
-    loop = QueueAgentLoop(problems_q, handler)
-    typer.echo(f"Solver agent started (run_tag={run_tag}).")
-    loop.run()
+
+    typer.echo(
+        f"Solving: {message.payload.get('title', message.message_id)} "
+        f"(run_tag={run_tag})"
+    )
+    try:
+        handler.handle(message)
+        problems_q.complete(message.message_id)
+        typer.echo("Solver finished successfully.")
+    except Exception as exc:
+        problems_q.fail(message.message_id, error=str(exc))
+        typer.echo(f"Solver failed: {exc}", err=True)
+        raise typer.Exit(code=1)
 
 
 @agent_app.command("critic")

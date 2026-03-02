@@ -7,7 +7,8 @@ without maintaining a persistent database.
 Directory layout under <env_path>:
     problems/<problem_id>.json          shared across runs
     cards/<card_id>.json                shared across runs (all card types)
-    experiences/<agent_name>/<experience_id>.jsonl
+    experiences/<agent_name>/<experience_id>.json     (parsed summary)
+    experiences/<agent_name>/<experience_id>.jsonl    (conversation log)
 """
 
 from __future__ import annotations
@@ -129,20 +130,10 @@ class FSBackend:
 
     # --- Experiences ---
 
-    def save_experience(
-        self, experience: Experience, agent: str = "solver"
-    ) -> Path:
-        path = (
-            self.experiences_dir(agent)
-            / f"{experience.experience_id}.jsonl"
-        )
-        _write_json(path, experience)
-        return path
-
     def get_experience(
         self, experience_id: str, agent: str = "solver"
     ) -> Optional[Experience]:
-        path = self.experiences_dir(agent) / f"{experience_id}.jsonl"
+        path = self.experiences_dir(agent) / f"{experience_id}.json"
         if not path.exists():
             return None
         return _read_json(path, Experience)
@@ -159,7 +150,7 @@ class FSBackend:
             return []
 
         experiences: list[Experience] = []
-        for f in sorted(search_dir.glob("*.jsonl")):
+        for f in sorted(search_dir.glob("*.json")):
             experiences.append(_read_json(f, Experience))
 
         if is_correct is not None:
