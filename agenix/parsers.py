@@ -160,9 +160,9 @@ def _parse_reflection_cards_markdown(
         **Confidence:** 0.85
     """
     cards = []
-    # Split on "## Reflection Card" or "### Reflection Card" headers
+    # Split on "## Reflection Card N — Title" or "### Card 1: Title" etc.
     sections = re.split(
-        r"#{2,3}\s+(?:Reflection\s+)?Card\s*\d*\s*[—–-]\s*",
+        r"#{2,3}\s+(?:Reflection\s+)?Card\s*\d*\s*[—–:|-]\s*",
         output,
         flags=re.IGNORECASE,
     )
