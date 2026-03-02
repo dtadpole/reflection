@@ -15,7 +15,7 @@ from agenix.parsers import (
     parse_problem,
     parse_reflection_cards,
 )
-from agenix.storage.models import Difficulty, ReflectionCategory
+from agenix.storage.models import Difficulty
 
 
 class TestExtractJson:
@@ -158,7 +158,7 @@ class TestParseReflectionCards:
         assert len(cards) == 1
         assert cards[0].title == "Good pattern"
         assert cards[0].experience_ids == ["exp_1"]
-        assert cards[0].category == ReflectionCategory.OPTIMIZATION
+        assert cards[0].category == "optimization"
         assert cards[0].confidence == 0.9
 
     def test_invalid_category_defaults_to_general(self):
@@ -175,7 +175,7 @@ class TestParseReflectionCards:
             ]
         })
         cards = parse_reflection_cards(output, ["exp_1"])
-        assert cards[0].category == ReflectionCategory.GENERAL
+        assert cards[0].category == "nonexistent_category"
 
 
 class TestParseKnowledgeActions:

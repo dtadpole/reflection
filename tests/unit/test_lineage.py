@@ -14,17 +14,17 @@ from agenix.storage.lineage import (
     split_card,
 )
 from agenix.storage.models import (
+    Card,
     CardStatus,
-    KnowledgeCard,
     LineageOperation,
     SourceReference,
 )
 
 
-def _make_card(**kwargs) -> KnowledgeCard:
-    defaults = {"title": "Test", "content": "Content"}
+def _make_card(**kwargs) -> Card:
+    defaults = {"card_type": "knowledge", "title": "Test", "content": "Content"}
     defaults.update(kwargs)
-    return KnowledgeCard(**defaults)
+    return Card(**defaults)
 
 
 class TestRecordCreation:
@@ -375,7 +375,8 @@ class TestGetCardAncestry:
 class TestBackwardCompat:
     def test_card_without_lineage_fields(self):
         """Cards created without lineage fields should work fine."""
-        card = KnowledgeCard(
+        card = Card(
+            card_type="knowledge",
             title="Old Card",
             content="No lineage",
             tags=["legacy"],
@@ -405,7 +406,7 @@ class TestBackwardCompat:
 
         # Roundtrip the new card
         json_str = new.model_dump_json()
-        restored = KnowledgeCard.model_validate_json(json_str)
+        restored = Card.model_validate_json(json_str)
 
         assert len(restored.lineage) == 1
         assert len(restored.source_refs) == 2
@@ -415,7 +416,7 @@ class TestBackwardCompat:
 
         # Roundtrip the superseded card
         json_old = card.model_dump_json()
-        restored_old = KnowledgeCard.model_validate_json(json_old)
+        restored_old = Card.model_validate_json(json_old)
         assert restored_old.status == CardStatus.SUPERSEDED
         assert restored_old.superseded_by == new.card_id
 

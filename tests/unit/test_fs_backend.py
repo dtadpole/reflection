@@ -7,17 +7,12 @@ import pytest
 from agenix.config import StorageConfig
 from agenix.storage.fs_backend import FSBackend, _write_json
 from agenix.storage.models import (
-    CardType,
+    Card,
     Difficulty,
     Experience,
     ExperienceStep,
-    HypothesisStatus,
-    InsightCard,
-    KnowledgeCard,
     Problem,
     ProblemStatus,
-    ReflectionCard,
-    ReflectionCategory,
     StepType,
     TestCase,
 )
@@ -71,7 +66,8 @@ def sample_experience(sample_problem):
 
 @pytest.fixture
 def sample_knowledge_card():
-    return KnowledgeCard(
+    return Card(
+        card_type="knowledge",
         title="Dynamic Programming Basics",
         content="DP is about breaking problems into overlapping subproblems.",
         tags=["dp", "algorithms"],
@@ -82,12 +78,13 @@ def sample_knowledge_card():
 
 @pytest.fixture
 def sample_insight_card():
-    return InsightCard(
+    return Card(
+        card_type="insight",
         title="Memoization vs Tabulation",
         content="Top-down memoization often uses less memory for sparse problems.",
         tags=["dp", "optimization"],
         hypothesis="Memoization is faster for sparse inputs",
-        hypothesis_status=HypothesisStatus.PROPOSED,
+        hypothesis_status="proposed",
     )
 
 
@@ -179,41 +176,45 @@ class TestExperienceCRUD:
 
 class TestReflectionCardCRUD:
     def test_save_and_get(self, backend, sample_experience):
-        r = ReflectionCard(
+        r = Card(
+            card_type="reflection",
             title="Memoization Insight",
             content="Fibonacci can be solved with memoization",
             experience_ids=[sample_experience.experience_id],
-            category=ReflectionCategory.ALGORITHM,
+            category="algorithm",
             confidence=0.9,
             supporting_steps=[0, 1],
         )
         backend.save_card(r)
         loaded = backend.get_card(r.card_id)
         assert loaded is not None
-        assert isinstance(loaded, ReflectionCard)
+        assert loaded.card_type == "reflection"
         assert loaded.content == "Fibonacci can be solved with memoization"
         assert loaded.experience_ids == [sample_experience.experience_id]
-        assert loaded.category == ReflectionCategory.ALGORITHM
+        assert loaded.category == "algorithm"
 
     def test_list_by_type(self, backend, sample_knowledge_card, sample_experience):
-        r = ReflectionCard(
+        r = Card(
+            card_type="reflection",
             title="Reflection",
             content="Content",
             experience_ids=[sample_experience.experience_id],
         )
         backend.save_card(sample_knowledge_card)
         backend.save_card(r)
-        reflections = backend.list_cards(card_type=CardType.REFLECTION)
+        reflections = backend.list_cards(card_type="reflection")
         assert len(reflections) == 1
-        assert isinstance(reflections[0], ReflectionCard)
+        assert reflections[0].card_type == "reflection"
 
     def test_list_by_experience(self, backend, sample_experience):
-        r1 = ReflectionCard(
+        r1 = Card(
+            card_type="reflection",
             title="R1",
             content="C1",
             experience_ids=[sample_experience.experience_id],
         )
-        r2 = ReflectionCard(
+        r2 = Card(
+            card_type="reflection",
             title="R2",
             content="C2",
             experience_ids=["other-exp"],
@@ -230,7 +231,7 @@ class TestCardCRUD:
         backend.save_card(sample_knowledge_card)
         loaded = backend.get_card(sample_knowledge_card.card_id)
         assert loaded is not None
-        assert isinstance(loaded, KnowledgeCard)
+        assert loaded.card_type == "knowledge"
         assert loaded.title == "Dynamic Programming Basics"
         assert loaded.domain == "algorithms"
 
@@ -238,8 +239,8 @@ class TestCardCRUD:
         backend.save_card(sample_insight_card)
         loaded = backend.get_card(sample_insight_card.card_id)
         assert loaded is not None
-        assert isinstance(loaded, InsightCard)
-        assert loaded.hypothesis_status == HypothesisStatus.PROPOSED
+        assert loaded.card_type == "insight"
+        assert loaded.hypothesis_status == "proposed"
 
     def test_get_nonexistent(self, backend):
         assert backend.get_card("nonexistent") is None
@@ -253,17 +254,17 @@ class TestCardCRUD:
     def test_list_filter_by_type(self, backend, sample_knowledge_card, sample_insight_card):
         backend.save_card(sample_knowledge_card)
         backend.save_card(sample_insight_card)
-        knowledge = backend.list_cards(card_type=CardType.KNOWLEDGE)
+        knowledge = backend.list_cards(card_type="knowledge")
         assert len(knowledge) == 1
-        assert isinstance(knowledge[0], KnowledgeCard)
+        assert knowledge[0].card_type == "knowledge"
 
     def test_count(self, backend, sample_knowledge_card, sample_insight_card):
         assert backend.count_cards() == 0
         backend.save_card(sample_knowledge_card)
         backend.save_card(sample_insight_card)
         assert backend.count_cards() == 2
-        assert backend.count_cards(card_type=CardType.KNOWLEDGE) == 1
-        assert backend.count_cards(card_type=CardType.INSIGHT) == 1
+        assert backend.count_cards(card_type="knowledge") == 1
+        assert backend.count_cards(card_type="insight") == 1
 
 
 class TestDuckDBQueries:

@@ -14,10 +14,6 @@ from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import (
     Card,
     CardStatus,
-    CardType,
-    InsightCard,
-    KnowledgeCard,
-    ReflectionCard,
 )
 from tools.knowledge.baseline.embedder import Embedder
 from tools.knowledge.baseline.index import LanceIndex
@@ -66,9 +62,9 @@ class KnowledgeStore:
         vector = self._embedder.embed_one(text)
         self._lance.add(
             card_id=card.card_id,
-            card_type=card.card_type.value,
+            card_type=card.card_type,
             title=card.title,
-            domain=card.domain if isinstance(card, KnowledgeCard) else "general",
+            domain=card.domain,
             tags=json.dumps(card.tags),
             vector=vector,
         )
@@ -84,17 +80,17 @@ class KnowledgeStore:
         self._lance.delete(card.card_id)
         self._fs.save_card(card)
 
-    def get_card(self, card_id: str) -> Optional[KnowledgeCard | InsightCard | ReflectionCard]:
+    def get_card(self, card_id: str) -> Optional[Card]:
         """Get a card by ID from the filesystem."""
         return self._fs.get_card(card_id)
 
     def list_cards(
         self,
-        card_type: Optional[CardType] = None,
+        card_type: Optional[str] = None,
         domain: Optional[str] = None,
         include_superseded: bool = False,
         limit: int = 100,
-    ) -> list[KnowledgeCard | InsightCard | ReflectionCard]:
+    ) -> list[Card]:
         """List cards from the filesystem, optionally filtered.
 
         By default only returns active cards. Set include_superseded=True
@@ -109,7 +105,7 @@ class KnowledgeStore:
         self,
         query: str,
         limit: Optional[int] = None,
-        card_type: Optional[CardType] = None,
+        card_type: Optional[str] = None,
         domain: Optional[str] = None,
     ) -> list[dict]:
         """Semantic search: embed query, search LanceDB, return cards with scores.
@@ -125,7 +121,7 @@ class KnowledgeStore:
         # Build optional where clause
         where_parts: list[str] = []
         if card_type:
-            where_parts.append(f"card_type = '{card_type.value}'")
+            where_parts.append(f"card_type = '{card_type}'")
         if domain:
             where_parts.append(f"domain = '{domain}'")
         where = " AND ".join(where_parts) if where_parts else None
@@ -153,12 +149,10 @@ def _card_to_text(card: Card) -> str:
     parts = [card.title, card.content]
     if card.tags:
         parts.append("Tags: " + ", ".join(card.tags))
-    if isinstance(card, KnowledgeCard):
-        if card.applicability:
-            parts.append("Applicability: " + card.applicability)
-    elif isinstance(card, InsightCard):
-        if card.hypothesis:
-            parts.append("Hypothesis: " + card.hypothesis)
-    elif isinstance(card, ReflectionCard):
-        parts.append("Category: " + card.category.value)
+    if card.applicability:
+        parts.append("Applicability: " + card.applicability)
+    if card.hypothesis:
+        parts.append("Hypothesis: " + card.hypothesis)
+    if card.category and card.category != "general":
+        parts.append("Category: " + card.category)
     return "\n".join(parts)

@@ -13,7 +13,6 @@ Directory layout under <env_path>:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Optional, TypeVar
 
@@ -24,13 +23,9 @@ from agenix.config import StorageConfig
 from agenix.storage.models import (
     Card,
     CardStatus,
-    CardType,
     Experience,
-    InsightCard,
-    KnowledgeCard,
     Problem,
     ProblemStatus,
-    ReflectionCard,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -47,15 +42,9 @@ def _read_json(path: Path, model_cls: type[T]) -> T:
     return model_cls.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _read_card_json(path: Path) -> KnowledgeCard | InsightCard | ReflectionCard:
-    """Read a card JSON file, dispatching to the correct card subclass."""
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    card_type = raw.get("card_type", "knowledge")
-    if card_type == CardType.INSIGHT.value:
-        return InsightCard.model_validate(raw)
-    if card_type == CardType.REFLECTION.value:
-        return ReflectionCard.model_validate(raw)
-    return KnowledgeCard.model_validate(raw)
+def _read_card_json(path: Path) -> Card:
+    """Read a card JSON file into the unified Card model."""
+    return _read_json(path, Card)
 
 
 class FSBackend:
@@ -165,7 +154,7 @@ class FSBackend:
         _write_json(path, card)
         return path
 
-    def get_card(self, card_id: str) -> Optional[KnowledgeCard | InsightCard | ReflectionCard]:
+    def get_card(self, card_id: str) -> Optional[Card]:
         path = self.cards_dir / f"{card_id}.json"
         if not path.exists():
             return None
@@ -173,11 +162,11 @@ class FSBackend:
 
     def list_cards(
         self,
-        card_type: Optional[CardType] = None,
+        card_type: Optional[str] = None,
         domain: Optional[str] = None,
         status: Optional[CardStatus] = CardStatus.ACTIVE,
         limit: int = 100,
-    ) -> list[KnowledgeCard | InsightCard | ReflectionCard]:
+    ) -> list[Card]:
         if not self.cards_dir.exists():
             return []
         cards = [_read_card_json(p) for p in sorted(self.cards_dir.glob("*.json"))]
@@ -186,10 +175,7 @@ class FSBackend:
         if card_type:
             cards = [c for c in cards if c.card_type == card_type]
         if domain:
-            cards = [
-                c for c in cards
-                if isinstance(c, KnowledgeCard) and c.domain == domain
-            ]
+            cards = [c for c in cards if c.domain == domain]
         cards.sort(key=lambda c: c.updated_at, reverse=True)
         return cards[:limit]
 
@@ -210,11 +196,11 @@ class FSBackend:
         self,
         source_id: str,
         source_type: Optional[str] = None,
-    ) -> list[KnowledgeCard | InsightCard | ReflectionCard]:
+    ) -> list[Card]:
         """Find cards referencing a given source entity in their source_refs."""
         if not self.cards_dir.exists():
             return []
-        results: list[KnowledgeCard | InsightCard | ReflectionCard] = []
+        results: list[Card] = []
         for p in sorted(self.cards_dir.glob("*.json")):
             card = _read_card_json(p)
             for ref in card.source_refs:
@@ -285,7 +271,7 @@ class FSBackend:
             ])
         return len(list(self.problems_dir.glob("*.json")))
 
-    def count_cards(self, card_type: Optional[CardType] = None) -> int:
+    def count_cards(self, card_type: Optional[str] = None) -> int:
         if not self.cards_dir.exists():
             return 0
         if card_type:

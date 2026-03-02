@@ -10,7 +10,7 @@ from agenix.parsers import parse_knowledge_actions
 from agenix.runner import ClaudeRunner
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.lineage import record_creation
-from agenix.storage.models import CardType, SourceReference
+from agenix.storage.models import SourceReference
 from tools.knowledge.baseline.store import KnowledgeStore
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class OrganizerHandler:
             })
 
         # Gather recent reflection cards
-        reflection_cards = self._fs.list_cards(card_type=CardType.REFLECTION, limit=50)
+        reflection_cards = self._fs.list_cards(card_type="reflection", limit=50)
         reflection_data = [
             json.loads(c.model_dump_json()) for c in reflection_cards
         ]

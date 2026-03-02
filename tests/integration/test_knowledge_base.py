@@ -37,12 +37,9 @@ from agenix.storage.lineage import (
     split_card,
 )
 from agenix.storage.models import (
+    Card,
     CardStatus,
-    InsightCard,
-    KnowledgeCard,
     LineageOperation,
-    ReflectionCard,
-    ReflectionCategory,
     SourceReference,
 )
 from services.models import ServiceStatus
@@ -167,7 +164,7 @@ class TestCreate:
 
     def test_create_knowledge_card(self, store):
         """Creating a KnowledgeCard should persist to FS and index in LanceDB."""
-        card = KnowledgeCard(
+        card = Card(card_type="knowledge",
             title="GPU Memory Coalescing",
             content="Coalesced memory access patterns improve GPU bandwidth. "
             "Adjacent threads should access adjacent memory locations.",
@@ -207,11 +204,12 @@ class TestCreate:
 
     def test_create_insight_card(self, store):
         """Creating an InsightCard should persist and be searchable."""
-        card = InsightCard(
+        card = Card(card_type="insight",
             title="Warp Divergence Hypothesis",
             content="Warp divergence in conditional branches reduces SM utilization.",
             tags=["gpu", "warp", "performance"],
             hypothesis="Eliminating branch divergence improves kernel throughput by 2x",
+            hypothesis_status="proposed",
         )
         record_creation(card, [], agent="test")
         store.add_card(card)
@@ -220,18 +218,18 @@ class TestCreate:
         _assert_in_lance(store, card.card_id)
 
         loaded = store.get_card(card.card_id)
-        assert isinstance(loaded, InsightCard)
-        assert loaded.hypothesis_status.value == "proposed"
+        assert loaded.card_type == "insight"
+        assert loaded.hypothesis_status == "proposed"
 
     def test_create_reflection_card(self, store):
         """Creating a ReflectionCard should persist and be searchable."""
-        card = ReflectionCard(
+        card = Card(card_type="reflection",
             title="Shared Memory Tiling Pattern",
             content="Using shared memory tiles for matrix multiply reduces "
             "global memory access by factor of tile_size.",
             tags=["gpu", "shared_memory", "tiling"],
             experience_ids=["exp-002"],
-            category=ReflectionCategory.OPTIMIZATION,
+            category="optimization",
             confidence=0.85,
             supporting_steps=[3, 5, 7],
         )
@@ -246,28 +244,28 @@ class TestCreate:
         _assert_in_lance(store, card.card_id)
 
         loaded = store.get_card(card.card_id)
-        assert isinstance(loaded, ReflectionCard)
-        assert loaded.category == ReflectionCategory.OPTIMIZATION
+        assert loaded.card_type == "reflection"
+        assert loaded.category == "optimization"
         assert loaded.confidence == 0.85
 
     def test_create_multiple_and_search(self, store):
         """Multiple cards should all be searchable with semantic relevance."""
         cards = [
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Triton Block Pointers",
                 content="Triton block pointers enable efficient tensor access patterns "
                 "with automatic bounds checking.",
                 tags=["triton", "pointers"],
                 domain="triton",
             ),
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="CUDA Thread Indexing",
                 content="threadIdx, blockIdx, blockDim compute global thread ID for "
                 "parallel work distribution.",
                 tags=["cuda", "threads"],
                 domain="cuda",
             ),
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Python List Comprehension",
                 content="List comprehensions provide concise syntax for creating lists "
                 "from iterables with optional filtering.",
@@ -300,7 +298,7 @@ class TestRevise:
 
     def test_revise_updates_both_stores(self, store):
         """Revising a card should supersede old in FS, remove from Lance, add new."""
-        old = KnowledgeCard(
+        old = Card(card_type="knowledge",
             title="Loop Unrolling",
             content="Manually unrolling loops can improve instruction-level parallelism.",
             tags=["optimization"],
@@ -315,7 +313,7 @@ class TestRevise:
         _assert_in_lance(store, old.card_id)
 
         # Revise with richer content
-        new = KnowledgeCard(
+        new = Card(card_type="knowledge",
             title="Loop Unrolling",
             content="Loop unrolling reduces branch overhead and enables ILP. "
             "Compiler pragmas (#pragma unroll) or Triton tl.static_range "
@@ -367,7 +365,7 @@ class TestRevise:
 
     def test_revise_preserves_lineage_chain(self, store):
         """Two successive revisions should form a lineage chain."""
-        v1 = KnowledgeCard(
+        v1 = Card(card_type="knowledge",
             title="Softmax Kernel",
             content="Basic softmax implementation.",
             domain="kernels",
@@ -375,7 +373,7 @@ class TestRevise:
         record_creation(v1, [], agent="test")
         store.add_card(v1)
 
-        v2 = KnowledgeCard(
+        v2 = Card(card_type="knowledge",
             title="Softmax Kernel",
             content="Softmax with online normalization for numerical stability.",
             domain="kernels",
@@ -384,7 +382,7 @@ class TestRevise:
         store.deactivate_card(v1)
         store.add_card(v2)
 
-        v3 = KnowledgeCard(
+        v3 = Card(card_type="knowledge",
             title="Softmax Kernel",
             content="Flash-attention style softmax: online normalization + tiling "
             "for O(1) extra memory.",
@@ -428,13 +426,13 @@ class TestMerge:
 
     def test_merge_two_cards(self, store):
         """Merging two cards: both superseded, merged card active."""
-        card_a = KnowledgeCard(
+        card_a = Card(card_type="knowledge",
             title="Reduction: Sum",
             content="Parallel reduction for sum: tree-based reduction within warps.",
             tags=["reduction", "sum"],
             domain="gpu_patterns",
         )
-        card_b = KnowledgeCard(
+        card_b = Card(card_type="knowledge",
             title="Reduction: Max",
             content="Parallel reduction for max: same tree pattern, different operator.",
             tags=["reduction", "max"],
@@ -454,7 +452,7 @@ class TestMerge:
         store.add_card(card_b)
 
         # Merge into unified reduction card
-        merged = KnowledgeCard(
+        merged = Card(card_type="knowledge",
             title="Parallel Reduction Patterns",
             content="Tree-based parallel reduction works for any associative operator "
             "(sum, max, min, product). Each level halves active threads. "
@@ -516,7 +514,7 @@ class TestMerge:
     def test_merge_three_cards(self, store):
         """Merging three cards should supersede all three."""
         cards = [
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title=f"Activation Function: {name}",
                 content=f"The {name} activation function.",
                 domain="neural_nets",
@@ -527,7 +525,7 @@ class TestMerge:
             record_creation(c, [], agent="test")
             store.add_card(c)
 
-        merged = KnowledgeCard(
+        merged = Card(card_type="knowledge",
             title="Activation Functions Overview",
             content="Common activation functions: ReLU (max(0,x)), "
             "GELU (Gaussian error), SiLU (x*sigmoid(x)).",
@@ -559,7 +557,7 @@ class TestSplit:
 
     def test_split_into_two(self, store):
         """Splitting a card: original superseded, children active."""
-        original = KnowledgeCard(
+        original = Card(card_type="knowledge",
             title="Memory Hierarchy",
             content="GPU memory hierarchy: registers (fastest), shared memory, "
             "L1/L2 cache, global memory (slowest). Shared memory is "
@@ -574,14 +572,14 @@ class TestSplit:
         )
         store.add_card(original)
 
-        child_a = KnowledgeCard(
+        child_a = Card(card_type="knowledge",
             title="GPU Register File",
             content="Registers are the fastest memory on GPU. Each SM has a fixed "
             "register file shared among threads. Register pressure limits occupancy.",
             tags=["gpu", "registers"],
             domain="gpu_architecture",
         )
-        child_b = KnowledgeCard(
+        child_b = Card(card_type="knowledge",
             title="GPU Shared Memory",
             content="Shared memory is a programmer-managed scratchpad on each SM. "
             "Much faster than global memory. Used for data reuse across threads "
@@ -652,7 +650,7 @@ class TestSplit:
 
     def test_split_into_three(self, store):
         """Splitting into three children."""
-        original = KnowledgeCard(
+        original = Card(card_type="knowledge",
             title="GPU Synchronization",
             content="Thread synchronization: __syncthreads() within block, "
             "atomics across blocks, cooperative groups for grid-level sync.",
@@ -662,15 +660,15 @@ class TestSplit:
         store.add_card(original)
 
         children = [
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Block Sync", content="__syncthreads()",
                 domain="gpu_programming",
             ),
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Atomics", content="atomicAdd, atomicCAS",
                 domain="gpu_programming",
             ),
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Cooperative Groups", content="grid.sync()",
                 domain="gpu_programming",
             ),
@@ -697,7 +695,7 @@ class TestArchive:
 
     def test_archive_removes_from_search(self, store):
         """Archived card should not appear in semantic search."""
-        card = KnowledgeCard(
+        card = Card(card_type="knowledge",
             title="Deprecated CUDA API",
             content="cudaMallocManaged with hints is deprecated in favor of "
             "explicit memory management with cudaMemcpy.",
@@ -738,13 +736,13 @@ class TestArchive:
 
     def test_archive_does_not_affect_search_for_others(self, store):
         """Archiving one card should not affect other cards' searchability."""
-        keep = KnowledgeCard(
+        keep = Card(card_type="knowledge",
             title="CUDA Streams",
             content="CUDA streams enable concurrent kernel execution and "
             "overlapping compute with memory transfers.",
             domain="cuda_runtime",
         )
-        remove = KnowledgeCard(
+        remove = Card(card_type="knowledge",
             title="CUDA Streams Legacy",
             content="Old stream API (deprecated).",
             domain="cuda_runtime",
@@ -776,7 +774,12 @@ class TestConsistency:
     def test_lance_count_matches_active_fs_count(self, store):
         """LanceDB row count should equal number of active cards on FS."""
         cards = [
-            KnowledgeCard(title=f"Consistency Card {i}", content=f"Content {i}", domain="test")
+            Card(
+                card_type="knowledge",
+                title=f"Consistency Card {i}",
+                content=f"Content {i}",
+                domain="test",
+            )
             for i in range(5)
         ]
         for c in cards:
@@ -791,7 +794,12 @@ class TestConsistency:
         store.deactivate_card(cards[0])
 
         # Revise one
-        revised = KnowledgeCard(title="Consistency Card 1 v2", content="Updated", domain="test")
+        revised = Card(
+            card_type="knowledge",
+            title="Consistency Card 1 v2",
+            content="Updated",
+            domain="test",
+        )
         revise_card(cards[1], revised, agent="test")
         store.deactivate_card(cards[1])
         store.add_card(revised)
@@ -807,7 +815,7 @@ class TestConsistency:
 
     def test_duckdb_sees_all_statuses(self, store):
         """DuckDB should see cards of all statuses (active, superseded, archived)."""
-        card = KnowledgeCard(
+        card = Card(card_type="knowledge",
             title="DuckDB Consistency Test",
             content="Test card for DuckDB query.",
             domain="test_duckdb",
@@ -831,7 +839,7 @@ class TestConsistency:
     def test_search_quality_with_remote_embeddings(self, store):
         """Remote Qwen3-Embedding-8B should produce high-quality semantic search."""
         cards = [
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Matrix Multiply Tiling",
                 content="Tiling matrix multiplication into blocks that fit in shared "
                 "memory reduces global memory accesses. Each thread block computes "
@@ -839,14 +847,14 @@ class TestConsistency:
                 tags=["matmul", "tiling", "shared_memory"],
                 domain="gpu_kernels",
             ),
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Convolution Implementation",
                 content="im2col transforms convolution into matrix multiplication. "
                 "Winograd reduces arithmetic operations for small filter sizes.",
                 tags=["convolution", "im2col", "winograd"],
                 domain="gpu_kernels",
             ),
-            KnowledgeCard(
+            Card(card_type="knowledge",
                 title="Python Decorators",
                 content="Decorators are functions that wrap other functions to add "
                 "behavior. Use @functools.wraps to preserve metadata.",
@@ -882,13 +890,13 @@ class TestFullLifecycle:
     def test_full_lifecycle(self, store):
         """End-to-end lifecycle across all operations."""
         # Step 1: Create two related cards
-        card_a = KnowledgeCard(
+        card_a = Card(card_type="knowledge",
             title="Attention: Scaled Dot-Product",
             content="Q K^T / sqrt(d_k) then softmax then multiply by V.",
             tags=["attention", "transformer"],
             domain="ml_kernels",
         )
-        card_b = KnowledgeCard(
+        card_b = Card(card_type="knowledge",
             title="Attention: Multi-Head",
             content="Split Q/K/V into h heads, apply attention, concat.",
             tags=["attention", "multi_head"],
@@ -905,7 +913,7 @@ class TestFullLifecycle:
         _assert_lance_count(store, store._lance.count())  # baseline
 
         # Step 2: Merge into unified attention card
-        merged = KnowledgeCard(
+        merged = Card(card_type="knowledge",
             title="Attention Mechanism",
             content="Attention: softmax(QK^T/sqrt(d_k))V. Multi-head splits into h "
             "heads for diverse representation. Flash attention tiles for O(N) memory.",
@@ -922,7 +930,7 @@ class TestFullLifecycle:
         _assert_fs_status(store, merged.card_id, CardStatus.ACTIVE)
 
         # Step 3: Revise with more detail
-        revised = KnowledgeCard(
+        revised = Card(card_type="knowledge",
             title="Attention Mechanism",
             content="Attention: softmax(QK^T/sqrt(d_k))V. Multi-head: h parallel "
             "attention ops. Flash attention: tiled, online softmax, O(N) memory. "
@@ -940,12 +948,12 @@ class TestFullLifecycle:
         _assert_in_lance(store, revised.card_id)
 
         # Step 4: Split into forward and optimization cards
-        child_fwd = KnowledgeCard(
+        child_fwd = Card(card_type="knowledge",
             title="Attention Forward Pass",
             content="softmax(QK^T/sqrt(d_k))V. Multi-head and GQA variants.",
             domain="ml_kernels",
         )
-        child_opt = KnowledgeCard(
+        child_opt = Card(card_type="knowledge",
             title="Attention Optimization",
             content="Flash attention: tiled online softmax for O(N) memory. "
             "Paged attention for efficient KV cache.",

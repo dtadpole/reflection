@@ -7,7 +7,6 @@ from typing import Any
 
 from claude_agent_sdk import SdkMcpTool, tool
 
-from agenix.storage.models import CardType
 from agenix.tools.base import error_result, text_result
 from tools.knowledge.baseline.store import KnowledgeStore
 
@@ -41,12 +40,9 @@ def create_tool(*, knowledge_store: KnowledgeStore) -> SdkMcpTool[Any]:
             if not query:
                 return error_result("query parameter is required for search")
             top_k = args.get("top_k", 5)
-            card_type = _parse_card_type(args.get("card_type"))
-            if isinstance(card_type, dict):
-                return card_type  # error_result
-
             results = knowledge_store.search(
-                query=query, limit=top_k, card_type=card_type,
+                query=query, limit=top_k,
+                card_type=args.get("card_type") or None,
                 domain=args.get("domain"),
             )
             cards_out = []
@@ -62,14 +58,12 @@ def create_tool(*, knowledge_store: KnowledgeStore) -> SdkMcpTool[Any]:
             return text_result(json.dumps({"cards": cards_out}, indent=2))
 
         elif action == "list":
-            card_type = _parse_card_type(args.get("card_type"))
-            if isinstance(card_type, dict):
-                return card_type
             cards = knowledge_store.list_cards(
-                card_type=card_type, domain=args.get("domain"),
+                card_type=args.get("card_type") or None,
+                domain=args.get("domain"),
             )
             cards_out = [
-                {"card_id": c.card_id, "title": c.title, "card_type": c.card_type.value}
+                {"card_id": c.card_id, "title": c.title, "card_type": c.card_type}
                 for c in cards
             ]
             return text_result(json.dumps({"cards": cards_out}, indent=2))
@@ -89,14 +83,3 @@ def create_tool(*, knowledge_store: KnowledgeStore) -> SdkMcpTool[Any]:
             )
 
     return knowledge_store_tool
-
-
-def _parse_card_type(card_type_str: str | None) -> CardType | None | dict:
-    """Parse card_type string, returning None, CardType, or error_result dict."""
-    if not card_type_str:
-        return None
-    try:
-        return CardType(card_type_str)
-    except ValueError:
-        valid = [ct.value for ct in CardType]
-        return error_result(f"Invalid card_type '{card_type_str}'. Valid: {valid}")

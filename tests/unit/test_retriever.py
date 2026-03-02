@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from agenix.storage.models import CardType
 from services.models import RerankResult
 from tools.retriever.baseline.logic import create_tool as create_baseline_tool
 from tools.retriever.rerank.logic import (
@@ -316,17 +315,17 @@ class TestSharedContract:
             r = factory(results)
             await r.handler({"query": "test", "card_type": "reflection"})
             call_kwargs = r.store.search.call_args.kwargs
-            assert call_kwargs["card_type"] == CardType.REFLECTION
+            assert call_kwargs["card_type"] == "reflection"
 
     @pytest.mark.asyncio
-    async def test_invalid_card_type_error(self, retriever):
-        """Invalid card_type returns error, store not called."""
-        result = await retriever.handler(
-            {"query": "test", "card_type": "invalid"}
+    async def test_custom_card_type_passed_through(self, retriever):
+        """Any card_type string is passed through to the store."""
+        retriever.store.search.return_value = []
+        await retriever.handler(
+            {"query": "test", "card_type": "custom_type"}
         )
-        assert _is_error(result)
-        assert "Invalid card_type" in result["content"][0]["text"]
-        retriever.store.search.assert_not_called()
+        call_kwargs = retriever.store.search.call_args.kwargs
+        assert call_kwargs["card_type"] == "custom_type"
 
     @pytest.mark.asyncio
     async def test_empty_store(self):

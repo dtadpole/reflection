@@ -94,21 +94,6 @@ class Experience(BaseModel):
 # --- Cards ---
 
 
-class CardType(str, Enum):
-    KNOWLEDGE = "knowledge"
-    INSIGHT = "insight"
-    REFLECTION = "reflection"
-
-
-class ReflectionCategory(str, Enum):
-    ALGORITHM = "algorithm"
-    DATA_STRUCTURE = "data_structure"
-    PATTERN = "pattern"
-    DEBUGGING = "debugging"
-    OPTIMIZATION = "optimization"
-    GENERAL = "general"
-
-
 class CardStatus(str, Enum):
     ACTIVE = "active"
     SUPERSEDED = "superseded"
@@ -147,54 +132,50 @@ class LineageEvent(BaseModel):
 
 
 class Card(BaseModel):
+    """Unified knowledge card.
+
+    All card types (knowledge, reflection, insight, or custom) use this
+    single model. Type-specific fields are optional and only populated
+    for their respective card types.
+    """
+
     card_id: str = Field(default_factory=_ulid)
-    card_type: CardType
+    card_type: str = "knowledge"  # free-form: "knowledge", "reflection", "insight", etc.
     title: str
     content: str
     code_snippet: str = ""
-    experience_ids: list[str] = Field(default_factory=list, max_length=3)
+    experience_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     source_ids: list[str] = Field(default_factory=list)
+
+    # Applicability (structured)
+    domain: str = "general"
+    category: str = "general"  # free-form: "optimization", "debugging", "pattern", etc.
+    applies_to: list[str] = Field(default_factory=list)
+    not_applies_to: list[str] = Field(default_factory=list)
+    applicability: str = ""
+    limitations: str = ""
+
+    # Insight-specific (optional)
+    hypothesis: str = ""
+    hypothesis_status: str = ""  # "proposed", "confirmed", "refuted", etc.
+    evidence_for: list[str] = Field(default_factory=list)
+    evidence_against: list[str] = Field(default_factory=list)
+
+    # Reflection-specific (optional)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    supporting_steps: list[int] = Field(default_factory=list)
+
+    # Lifecycle
     version: int = 1
     status: CardStatus = CardStatus.ACTIVE
     lineage: list[LineageEvent] = Field(default_factory=list)
     source_refs: list[SourceReference] = Field(default_factory=list)
     superseded_by: Optional[str] = None
     predecessor_ids: list[str] = Field(default_factory=list)
+    related_card_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
-
-
-class KnowledgeCard(Card):
-    card_type: CardType = CardType.KNOWLEDGE
-    domain: str = "general"
-    applicability: str = ""
-    limitations: str = ""
-    related_card_ids: list[str] = Field(default_factory=list)
-
-
-class HypothesisStatus(str, Enum):
-    PROPOSED = "proposed"
-    TESTING = "testing"
-    CONFIRMED = "confirmed"
-    REFUTED = "refuted"
-    INCONCLUSIVE = "inconclusive"
-
-
-class InsightCard(Card):
-    card_type: CardType = CardType.INSIGHT
-    hypothesis: str = ""
-    hypothesis_status: HypothesisStatus = HypothesisStatus.PROPOSED
-    evidence_for: list[str] = Field(default_factory=list)
-    evidence_against: list[str] = Field(default_factory=list)
-    experiments_run: int = 0
-
-
-class ReflectionCard(Card):
-    card_type: CardType = CardType.REFLECTION
-    category: ReflectionCategory = ReflectionCategory.GENERAL
-    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    supporting_steps: list[int] = Field(default_factory=list)
 
 
 # --- Iteration Result ---

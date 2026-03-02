@@ -4,21 +4,16 @@ from __future__ import annotations
 
 from agenix.storage.models import (
     AgentConfig,
+    Card,
     CardStatus,
-    CardType,
     Difficulty,
     Experience,
     ExperienceStep,
-    HypothesisStatus,
-    InsightCard,
-    KnowledgeCard,
     LineageEvent,
     LineageOperation,
     LoadedAgent,
     Problem,
     ProblemStatus,
-    ReflectionCard,
-    ReflectionCategory,
     SourceReference,
     StepType,
     TestCase,
@@ -158,35 +153,38 @@ class TestTestResult:
 
 class TestReflectionCard:
     def test_create(self):
-        r = ReflectionCard(
+        r = Card(
+            card_type="reflection",
             title="DP Reflection",
             content="Dynamic programming works by breaking problems into subproblems",
             experience_ids=["e1"],
-            category=ReflectionCategory.ALGORITHM,
+            category="algorithm",
             confidence=0.8,
             supporting_steps=[0, 2, 4],
         )
-        assert r.card_type == CardType.REFLECTION
-        assert r.category == ReflectionCategory.ALGORITHM
+        assert r.card_type == "reflection"
+        assert r.category == "algorithm"
         assert r.confidence == 0.8
         assert len(r.supporting_steps) == 3
         assert r.experience_ids == ["e1"]
-        assert r.card_id  # inherited from Card
+        assert r.card_id
         assert r.version == 1
 
     def test_confidence_bounds(self):
         import pytest
 
         with pytest.raises(Exception):
-            ReflectionCard(
+            Card(
+                card_type="reflection",
                 title="Test",
                 content="test",
                 experience_ids=["e1"],
                 confidence=1.5,
             )
 
-    def test_inherits_card_fields(self):
-        r = ReflectionCard(
+    def test_card_fields(self):
+        r = Card(
+            card_type="reflection",
             title="Test",
             content="Content",
             experience_ids=["e1"],
@@ -198,25 +196,27 @@ class TestReflectionCard:
         assert r.tags == ["dp"]
 
     def test_json_roundtrip(self):
-        r = ReflectionCard(
+        r = Card(
+            card_type="reflection",
             title="Test",
             content="Content",
             experience_ids=["e1"],
-            category=ReflectionCategory.PATTERN,
+            category="pattern",
             confidence=0.9,
             supporting_steps=[1, 3],
         )
         json_str = r.model_dump_json()
-        r2 = ReflectionCard.model_validate_json(json_str)
-        assert r2.card_type == CardType.REFLECTION
+        r2 = Card.model_validate_json(json_str)
+        assert r2.card_type == "reflection"
         assert r2.experience_ids == ["e1"]
-        assert r2.category == ReflectionCategory.PATTERN
+        assert r2.category == "pattern"
         assert r2.confidence == 0.9
 
 
 class TestKnowledgeCard:
     def test_create(self):
-        kc = KnowledgeCard(
+        kc = Card(
+            card_type="knowledge",
             title="Binary Search Pattern",
             content="Binary search works on sorted arrays...",
             tags=["search", "arrays"],
@@ -224,46 +224,46 @@ class TestKnowledgeCard:
             applicability="Sorted collections, monotonic functions",
             limitations="Requires random access, sorted input",
         )
-        assert kc.card_type == CardType.KNOWLEDGE
+        assert kc.card_type == "knowledge"
         assert kc.domain == "algorithms"
         assert len(kc.tags) == 2
         assert kc.version == 1
 
     def test_json_roundtrip(self):
-        kc = KnowledgeCard(
+        kc = Card(
+            card_type="knowledge",
             title="Test Card",
             content="Content",
             tags=["test"],
             related_card_ids=["card-1", "card-2"],
         )
         json_str = kc.model_dump_json()
-        kc2 = KnowledgeCard.model_validate_json(json_str)
+        kc2 = Card.model_validate_json(json_str)
         assert kc2.title == kc.title
         assert kc2.related_card_ids == ["card-1", "card-2"]
 
 
 class TestInsightCard:
     def test_create(self):
-        ic = InsightCard(
+        ic = Card(
+            card_type="insight",
             title="Memoization improves recursive solutions",
             content="Adding memoization to recursive solutions...",
             hypothesis="Memoization reduces time complexity from exponential to polynomial",
-            hypothesis_status=HypothesisStatus.CONFIRMED,
+            hypothesis_status="confirmed",
             evidence_for=["fib_trajectory_1", "dp_trajectory_3"],
             evidence_against=[],
-            experiments_run=3,
         )
-        assert ic.card_type == CardType.INSIGHT
-        assert ic.hypothesis_status == HypothesisStatus.CONFIRMED
-        assert ic.experiments_run == 3
+        assert ic.card_type == "insight"
+        assert ic.hypothesis_status == "confirmed"
 
     def test_defaults(self):
-        ic = InsightCard(
+        ic = Card(
+            card_type="insight",
             title="Test",
             content="Content",
         )
-        assert ic.hypothesis_status == HypothesisStatus.PROPOSED
-        assert ic.experiments_run == 0
+        assert ic.hypothesis_status == ""
 
 
 class TestCardStatus:
@@ -331,21 +331,22 @@ class TestLineageEvent:
 
 class TestCardLineageFields:
     def test_new_fields_have_defaults(self):
-        card = KnowledgeCard(title="Test", content="Content")
+        card = Card(title="Test", content="Content")
         assert card.status == CardStatus.ACTIVE
         assert card.lineage == []
         assert card.source_refs == []
         assert card.superseded_by is None
         assert card.predecessor_ids == []
 
-    def test_insight_card_inherits_lineage_fields(self):
-        card = InsightCard(title="Test", content="Content")
+    def test_insight_card_has_lineage_fields(self):
+        card = Card(card_type="insight", title="Test", content="Content")
         assert card.status == CardStatus.ACTIVE
         assert card.lineage == []
         assert card.source_refs == []
 
     def test_card_with_lineage_json_roundtrip(self):
-        card = KnowledgeCard(
+        card = Card(
+            card_type="knowledge",
             title="Test",
             content="Content",
             status=CardStatus.SUPERSEDED,
@@ -361,7 +362,7 @@ class TestCardLineageFields:
             ],
         )
         json_str = card.model_dump_json()
-        restored = KnowledgeCard.model_validate_json(json_str)
+        restored = Card.model_validate_json(json_str)
         assert restored.status == CardStatus.SUPERSEDED
         assert restored.superseded_by == "card-new"
         assert restored.predecessor_ids == ["card-old"]

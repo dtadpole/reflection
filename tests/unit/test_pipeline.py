@@ -22,7 +22,6 @@ from agenix.storage.models import (
     Difficulty,
     IterationResult,
     LoadedAgent,
-    ReflectionCategory,
 )
 
 # --- Fake runner ---
@@ -191,7 +190,7 @@ class TestParseReflectionCards:
         card = cards[0]
         assert card.title == "Python slicing for reversal"
         assert card.experience_ids == ["exp_123"]
-        assert card.category == ReflectionCategory.PATTERN
+        assert card.category == "pattern"
         assert card.confidence == 0.9
         assert card.supporting_steps == [0]
 
@@ -204,7 +203,7 @@ class TestParseReflectionCards:
             }],
         })
         cards = parse_reflection_cards(output, ["exp_1"])
-        assert cards[0].category == ReflectionCategory.GENERAL
+        assert cards[0].category == "nonexistent"
 
 
 class TestParseKnowledgeActions:

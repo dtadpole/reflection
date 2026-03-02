@@ -69,10 +69,9 @@ class SolverHandler:
             }
             if card.code_snippet:
                 entry["code_snippet"] = card.code_snippet
-            # KnowledgeCard-specific fields
-            if hasattr(card, "applicability") and card.applicability:
+            if card.applicability:
                 entry["applicability"] = card.applicability
-            if hasattr(card, "limitations") and card.limitations:
+            if card.limitations:
                 entry["limitations"] = card.limitations
             knowledge.append(entry)
 

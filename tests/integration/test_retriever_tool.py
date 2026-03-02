@@ -32,12 +32,7 @@ from agenix.config import (
     load_config,
 )
 from agenix.storage.fs_backend import FSBackend
-from agenix.storage.models import (
-    InsightCard,
-    KnowledgeCard,
-    ReflectionCard,
-    ReflectionCategory,
-)
+from agenix.storage.models import Card
 from services.models import ServiceStatus
 from services.reranker.baseline.client import RerankerClient
 from services.text_embedding.baseline.client import TextEmbeddingClient
@@ -114,7 +109,8 @@ def _reranker_available(rr_client) -> bool:
 # ---------------------------------------------------------------------------
 
 SAMPLE_CARDS = [
-    KnowledgeCard(
+    Card(
+        card_type="knowledge",
         title="Triton tiling for matrix multiplication",
         content=(
             "When writing Triton kernels for GEMM, tile the computation into "
@@ -128,7 +124,8 @@ SAMPLE_CARDS = [
         limitations="Block sizes must be powers of 2",
         tags=["triton", "gemm", "tiling", "gpu"],
     ),
-    KnowledgeCard(
+    Card(
+        card_type="knowledge",
         title="CUDA shared memory bank conflicts",
         content=(
             "Shared memory is divided into 32 banks on NVIDIA GPUs. Bank conflicts "
@@ -140,7 +137,8 @@ SAMPLE_CARDS = [
         applicability="CUDA kernels using shared memory",
         tags=["cuda", "shared_memory", "bank_conflict", "optimization"],
     ),
-    KnowledgeCard(
+    Card(
+        card_type="knowledge",
         title="ReLU activation kernel optimization",
         content=(
             "ReLU is element-wise and memory-bound. Fuse it with preceding "
@@ -153,7 +151,8 @@ SAMPLE_CARDS = [
         applicability="Activation functions in neural networks",
         tags=["triton", "relu", "kernel_fusion", "activation"],
     ),
-    KnowledgeCard(
+    Card(
+        card_type="knowledge",
         title="Python dynamic programming patterns",
         content=(
             "For DP problems, decide between top-down (memoization) and "
@@ -165,7 +164,8 @@ SAMPLE_CARDS = [
         applicability="Optimization and counting problems",
         tags=["python", "dynamic_programming", "memoization"],
     ),
-    ReflectionCard(
+    Card(
+        card_type="reflection",
         title="Triton kernel launch grid miscalculation",
         content=(
             "A common bug: computing grid = (N // BLOCK_SIZE,) instead of "
@@ -174,11 +174,12 @@ SAMPLE_CARDS = [
             "on inputs not divisible by BLOCK_SIZE."
         ),
         experience_ids=["exp-001"],
-        category=ReflectionCategory.DEBUGGING,
+        category="debugging",
         confidence=0.95,
         tags=["triton", "grid", "off-by-one"],
     ),
-    InsightCard(
+    Card(
+        card_type="insight",
         title="Memory-bound kernels dominate modern workloads",
         content=(
             "Across 50 KernelBench problems, 80% of generated kernels are "
@@ -417,7 +418,8 @@ class TestRetrieverBaseline:
         old_card = next(c for c in SAMPLE_CARDS if "ReLU" in c.title)
         record_creation(old_card, [SourceReference(id="traj-002", type="experience")])
 
-        new_card = KnowledgeCard(
+        new_card = Card(
+            card_type="knowledge",
             title="Fused ReLU activation patterns",
             content=(
                 "Always fuse ReLU with the preceding matmul or conv kernel. "

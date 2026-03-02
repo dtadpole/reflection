@@ -42,14 +42,15 @@ class TestCardsList:
         assert result.exit_code == 0
         assert "No cards found" in result.output
 
-    def test_cards_list_invalid_type(self, tmp_path):
+    def test_cards_list_custom_type(self, tmp_path):
+        """Any card_type string is accepted (free-form)."""
         result = runner.invoke(app, [
             "cards", "list",
-            "--type", "invalid",
+            "--type", "custom_type",
             "--env", "test_cli",
             "--config", str(tmp_path / "nonexistent.toml"),
         ])
-        assert result.exit_code == 1
+        assert result.exit_code == 0
 
     def test_cards_list_valid_type(self, tmp_path):
         result = runner.invoke(app, [

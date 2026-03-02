@@ -7,7 +7,6 @@ from typing import Any
 
 from claude_agent_sdk import SdkMcpTool, tool
 
-from agenix.storage.models import CardType
 from agenix.tools.base import error_result, text_result
 from tools.knowledge.baseline.store import KnowledgeStore
 
@@ -36,15 +35,7 @@ def create_tool(*, knowledge_store: KnowledgeStore) -> SdkMcpTool[Any]:
         top_k = args.get("top_k", 5)
         card_type_str = args.get("card_type")
 
-        card_type = None
-        if card_type_str:
-            try:
-                card_type = CardType(card_type_str)
-            except ValueError:
-                valid = [ct.value for ct in CardType]
-                return error_result(
-                    f"Invalid card_type '{card_type_str}'. Valid: {valid}"
-                )
+        card_type = card_type_str or None
 
         results = knowledge_store.search(
             query=query,

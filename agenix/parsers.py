@@ -10,13 +10,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agenix.storage.models import (
+    Card,
     Difficulty,
     Experience,
-    InsightCard,
-    KnowledgeCard,
     Problem,
-    ReflectionCard,
-    ReflectionCategory,
     TestCase,
     TestResult,
 )
@@ -122,38 +119,38 @@ def parse_experience(
 
 def parse_reflection_cards(
     output: str, experience_ids: list[str],
-) -> list[ReflectionCard]:
-    """Parse critic output into ReflectionCards."""
+) -> list[Card]:
+    """Parse critic output into reflection Cards."""
     data = extract_json(output)
     cards = []
     for rc in data.get("reflection_cards", []):
-        try:
-            category = ReflectionCategory(rc.get("category", "general"))
-        except ValueError:
-            category = ReflectionCategory.GENERAL
-        cards.append(ReflectionCard(
+        cards.append(Card(
+            card_type="reflection",
             title=rc["title"],
             content=rc["content"],
             code_snippet=rc.get("code_snippet", ""),
             experience_ids=experience_ids[:3],
-            category=category,
+            category=rc.get("category", "general"),
             confidence=rc.get("confidence", 0.5),
             tags=rc.get("tags", []),
             supporting_steps=rc.get("supporting_steps", []),
+            applies_to=rc.get("applies_to", []),
+            not_applies_to=rc.get("not_applies_to", []),
         ))
     return cards
 
 
 def parse_knowledge_actions(
     output: str, experience_ids: list[str] | None = None,
-) -> list[KnowledgeCard]:
-    """Parse organizer output into KnowledgeCards (create actions only for now)."""
+) -> list[Card]:
+    """Parse organizer output into knowledge Cards (create actions only for now)."""
     data = extract_json(output)
     cards = []
     for action in data.get("actions", []):
         if action.get("action") != "create":
             continue
-        cards.append(KnowledgeCard(
+        cards.append(Card(
+            card_type="knowledge",
             title=action["title"],
             content=action["content"],
             code_snippet=action.get("code_snippet", ""),
@@ -163,18 +160,21 @@ def parse_knowledge_actions(
             limitations=action.get("limitations", ""),
             tags=action.get("tags", []),
             related_card_ids=action.get("related_card_ids", []),
+            applies_to=action.get("applies_to", []),
+            not_applies_to=action.get("not_applies_to", []),
         ))
     return cards
 
 
 def parse_insight_cards(
     output: str, experience_ids: list[str] | None = None,
-) -> list[InsightCard]:
-    """Parse insight finder output into InsightCards."""
+) -> list[Card]:
+    """Parse insight finder output into insight Cards."""
     data = extract_json(output)
     cards = []
     for ic in data.get("insight_cards", []):
-        cards.append(InsightCard(
+        cards.append(Card(
+            card_type="insight",
             title=ic["title"],
             content=ic["content"],
             code_snippet=ic.get("code_snippet", ""),
@@ -183,5 +183,7 @@ def parse_insight_cards(
             evidence_for=ic.get("evidence_for", []),
             evidence_against=ic.get("evidence_against", []),
             tags=ic.get("tags", []),
+            applies_to=ic.get("applies_to", []),
+            not_applies_to=ic.get("not_applies_to", []),
         ))
     return cards

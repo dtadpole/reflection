@@ -23,14 +23,12 @@ from agenix.parsers import (
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.lineage import record_creation
 from agenix.storage.models import (
+    Card,
     Experience,
-    InsightCard,
     IterationResult,
-    KnowledgeCard,
     LoadedAgent,
     Problem,
     ProblemStatus,
-    ReflectionCard,
     SourceReference,
 )
 from tools.knowledge.baseline.store import KnowledgeStore
@@ -109,7 +107,7 @@ class Pipeline:
         logger.info("Organizer produced %d knowledge cards", len(knowledge_cards))
 
         # Step 5: Insight Finder (periodic)
-        insight_cards: list[InsightCard] = []
+        insight_cards: list[Card] = []
         if self._should_run_insight_finder(iteration):
             insight_cards = self._run_insight_finder(run_tag, iteration)
             logger.info("Insight Finder produced %d insight cards", len(insight_cards))
@@ -183,7 +181,7 @@ class Pipeline:
         run_tag: str,
         problem: Problem,
         experience: Experience,
-    ) -> list[ReflectionCard]:
+    ) -> list[Card]:
         agent = load_agent("critic")
 
         input_payload = json.dumps({
@@ -208,8 +206,8 @@ class Pipeline:
         run_tag: str,
         problem: Problem,
         experience: Experience,
-        reflection_cards: list[ReflectionCard],
-    ) -> list[KnowledgeCard]:
+        reflection_cards: list[Card],
+    ) -> list[Card]:
         agent = load_agent("organizer")
 
         input_payload = json.dumps({
@@ -237,7 +235,7 @@ class Pipeline:
 
     def _run_insight_finder(
         self, run_tag: str, iteration: int
-    ) -> list[InsightCard]:
+    ) -> list[Card]:
         agent = load_agent("insight_finder")
 
         recent = self._fs.list_experiences(limit=20)

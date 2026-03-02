@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from agenix.config import EmbedderConfig, ReflectionConfig, StorageConfig
-from agenix.storage.models import InsightCard, KnowledgeCard
+from agenix.storage.models import Card
 from tools.knowledge.baseline.store import KnowledgeStore
 
 
@@ -23,21 +23,21 @@ def knowledge_store(tmp_path):
 class TestKnowledgeRetrieval:
     def test_add_and_search(self, knowledge_store):
         """Store cards, then retrieve by semantic similarity."""
-        card1 = KnowledgeCard(
+        card1 = Card(card_type="knowledge",
             title="Binary Search",
             content="Binary search divides the search space in half each step. "
             "Requires a sorted array. Time complexity O(log n).",
             tags=["search", "algorithms", "divide-and-conquer"],
             domain="algorithms",
         )
-        card2 = KnowledgeCard(
+        card2 = Card(card_type="knowledge",
             title="Bubble Sort",
             content="Bubble sort repeatedly swaps adjacent elements. "
             "Simple but O(n^2) time complexity.",
             tags=["sorting", "algorithms"],
             domain="algorithms",
         )
-        card3 = KnowledgeCard(
+        card3 = Card(card_type="knowledge",
             title="HTTP Status Codes",
             content="200 OK, 404 Not Found, 500 Internal Server Error. "
             "Used in REST API responses.",
@@ -57,13 +57,13 @@ class TestKnowledgeRetrieval:
 
     def test_search_with_type_filter(self, knowledge_store):
         """Search with card_type filter."""
-        k_card = KnowledgeCard(
+        k_card = Card(card_type="knowledge",
             title="Recursion",
             content="A function that calls itself to solve smaller subproblems.",
             tags=["recursion"],
             domain="algorithms",
         )
-        i_card = InsightCard(
+        i_card = Card(card_type="insight",
             title="Recursion Depth",
             content="Python default recursion limit is 1000.",
             tags=["recursion", "python"],
@@ -81,12 +81,12 @@ class TestKnowledgeRetrieval:
 
     def test_search_with_domain_filter(self, knowledge_store):
         """Search with domain filter."""
-        card1 = KnowledgeCard(
+        card1 = Card(card_type="knowledge",
             title="Graph BFS",
             content="Breadth-first search explores nodes level by level.",
             domain="algorithms",
         )
-        card2 = KnowledgeCard(
+        card2 = Card(card_type="knowledge",
             title="CSS Flexbox",
             content="Flexbox is a CSS layout model for responsive design.",
             domain="web",
@@ -103,7 +103,7 @@ class TestKnowledgeRetrieval:
         """Archived cards should not appear in search results."""
         from agenix.storage.lineage import archive_card
 
-        card = KnowledgeCard(
+        card = Card(card_type="knowledge",
             title="Linked Lists",
             content="A data structure with nodes pointing to the next node.",
             domain="data_structures",
@@ -128,7 +128,7 @@ class TestKnowledgeRetrieval:
         from agenix.storage.lineage import record_creation, revise_card
         from agenix.storage.models import SourceReference
 
-        old_card = KnowledgeCard(
+        old_card = Card(card_type="knowledge",
             title="Hash Tables",
             content="Key-value storage with O(1) average lookup.",
             domain="data_structures",
@@ -137,7 +137,7 @@ class TestKnowledgeRetrieval:
         knowledge_store.add_card(old_card)
 
         # Revise into a new card
-        new_card = KnowledgeCard(
+        new_card = Card(card_type="knowledge",
             title="Hash Tables",
             content="Hash tables use hash functions for O(1) amortized lookup. "
             "Handle collisions via chaining or open addressing.",

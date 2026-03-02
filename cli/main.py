@@ -11,7 +11,6 @@ import typer
 
 from agenix.config import ReflectionConfig, load_config, make_log_path
 from agenix.storage.fs_backend import FSBackend
-from agenix.storage.models import CardType
 
 app = typer.Typer(name="reflection", help="Self-evolving multi-agent coding system.")
 agent_app = typer.Typer(help="Run individual agents.")
@@ -233,9 +232,9 @@ def status(
 
     problems = fs.count_problems()
     experiences = fs.count_experiences()
-    cards_knowledge = fs.count_cards(CardType.KNOWLEDGE)
-    cards_reflection = fs.count_cards(CardType.REFLECTION)
-    cards_insight = fs.count_cards(CardType.INSIGHT)
+    cards_knowledge = fs.count_cards("knowledge")
+    cards_reflection = fs.count_cards("reflection")
+    cards_insight = fs.count_cards("insight")
 
     typer.echo(f"Environment: {cfg.storage.env}")
     typer.echo(f"Data root:   {cfg.storage.env_path}")
@@ -565,22 +564,13 @@ def cards_list(
     cfg = _load_config(config, env)
     fs = FSBackend(cfg.storage)
 
-    ct = None
-    if card_type:
-        try:
-            ct = CardType(card_type)
-        except ValueError:
-            valid = [t.value for t in CardType]
-            typer.echo(f"Invalid card type '{card_type}'. Valid: {valid}", err=True)
-            raise typer.Exit(1)
-
-    cards = fs.list_cards(card_type=ct)
+    cards = fs.list_cards(card_type=card_type or None)
     if not cards:
         typer.echo("No cards found.")
         return
 
     for card in cards:
-        typer.echo(f"[{card.card_type.value:10s}] {card.card_id}  {card.title}")
+        typer.echo(f"[{card.card_type:10s}] {card.card_id}  {card.title}")
 
 
 @cards_app.command("search")
