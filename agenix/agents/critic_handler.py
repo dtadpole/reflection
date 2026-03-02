@@ -7,6 +7,7 @@ import logging
 
 from agenix.loader import load_agent
 from agenix.parsers import parse_reflection_cards
+from agenix.queue.fs_queue import FSQueue
 from agenix.queue.models import QueueMessage
 from agenix.runner import ClaudeRunner
 from agenix.storage.fs_backend import FSBackend
@@ -25,23 +26,28 @@ class CriticHandler:
         runner: ClaudeRunner,
         fs_backend: FSBackend,
         knowledge_store: KnowledgeStore,
+        reflections_queue: FSQueue,
+        *,
+        max_cards: int = 3,
     ) -> None:
         self._runner = runner
         self._fs = fs_backend
         self._store = knowledge_store
+        self._reflections_queue = reflections_queue
+        self._max_cards = max_cards
 
     def handle(self, message: QueueMessage) -> None:
         """Process an experience message from the experiences queue."""
         experience_id = message.payload["experience_id"]
-        problem_id = message.payload["problem_id"]
-
-        problem = self._fs.get_problem(problem_id)
-        if problem is None:
-            raise ValueError(f"Problem {problem_id} not found")
 
         experience = self._fs.get_experience(experience_id)
         if experience is None:
             raise ValueError(f"Experience {experience_id} not found")
+
+        problem_id = experience.problem_id
+        problem = self._fs.get_problem(problem_id)
+        if problem is None:
+            raise ValueError(f"Problem {problem_id} not found")
 
         logger.info(
             "Critiquing experience %s for problem %s",
@@ -57,6 +63,7 @@ class CriticHandler:
         agent = load_agent("critic")
         result = self._runner.run(agent, input_payload)
         cards = parse_reflection_cards(result.output, [experience_id])
+        cards = cards[:self._max_cards]
 
         for card in cards:
             source_refs = [
@@ -64,5 +71,9 @@ class CriticHandler:
             ]
             record_creation(card, source_refs, agent="critic")
             self._store.add_card(card)
+            self._reflections_queue.enqueue(
+                sender="critic",
+                payload={"card_id": card.card_id},
+            )
 
         logger.info("Critic produced %d reflection cards", len(cards))

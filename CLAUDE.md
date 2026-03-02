@@ -88,23 +88,27 @@ Agents operate independently and communicate via filesystem queues and the share
                          │          │
                          ▼          │
                       CRITIC        │
-                         │          │
-                         ▼          │
-                  [Knowledge Base] ─┘
-                     ▲        ▲
-                     │        │
-               ORGANIZER   INSIGHT_FINDER
-               (periodic)   (periodic)
+                       │  │         │
+                       │  ▼         │
+                       │ [Knowledge Base] ─┘
+                       │    ▲        ▲
+                       ▼    │        │
+              [reflections queue]    │
+                       │    │        │
+                       ▼    │        │
+                 ORGANIZER   INSIGHT_FINDER
+                 (periodic)   (periodic)
 ```
 
 ### Queue Topology
 
-Two queues (`problems`, `experiences`) under `<data_root>/<env>/queues/`:
+Three queues (`problems`, `experiences`, `reflections`) under `<data_root>/<env>/queues/`:
 
 | Queue | Producer | Consumer | Payload |
 |-------|----------|----------|---------|
-| `problems` | CURATOR | SOLVER | `{problem_id, title}` |
-| `experiences` | SOLVER | CRITIC | `{experience_id, problem_id}` |
+| `problems` | CURATOR | SOLVER | `{problem_id}` |
+| `experiences` | SOLVER | CRITIC | `{experience_id}` |
+| `reflections` | CRITIC | ORGANIZER/INSIGHT_FINDER (future) | `{card_id}` |
 
 Each queue has subdirectories: `pending/`, `processing/`, `done/`, `failed/`.
 Messages are JSON files. State transitions use atomic `os.rename()` for POSIX safety.

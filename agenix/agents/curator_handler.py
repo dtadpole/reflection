@@ -165,10 +165,7 @@ def run_curator(
         fs_backend.save_problem(problem)
         queue.enqueue(
             sender="curator",
-            payload={
-                "problem_id": problem.problem_id,
-                "title": problem.title,
-            },
+            payload={"problem_id": problem.problem_id},
         )
         existing_titles.add(problem.title)
         created.append(problem)

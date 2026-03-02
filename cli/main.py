@@ -119,6 +119,10 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
         verifier_def = load_tool("verifier", variant="kb_eval")
         registry.register(verifier_def.create_fn(kb_eval_client=kb_client))
 
+    # Load recall tool — filesystem lookup for problems, experiences, cards
+    recall_def = load_tool("recall", variant="baseline")
+    registry.register(recall_def.create_fn(fs_backend=fs))
+
     runner = ClaudeRunner(
         tool_registry=registry, run_dir=run_dir, experiences_dir=experiences_dir,
     )
@@ -344,11 +348,14 @@ def agent_critic(
     from agenix.queue.fs_queue import FSQueue
 
     experiences_q = FSQueue("experiences", cfg.storage)
+    reflections_q = FSQueue("reflections", cfg.storage)
+    reflections_q.initialize()
 
     handler = CriticHandler(
         runner=runner,
         fs_backend=fs,
         knowledge_store=pipeline.store,
+        reflections_queue=reflections_q,
     )
     loop = QueueAgentLoop(experiences_q, handler)
     typer.echo(f"Critic agent started (run_tag={run_tag}).")
@@ -425,7 +432,7 @@ def queues_status(
     from agenix.queue.fs_queue import FSQueue
     from agenix.queue.models import MessageState
 
-    queue_names = ["problems", "experiences"]
+    queue_names = ["problems", "experiences", "reflections"]
     for name in queue_names:
         q = FSQueue(name, cfg.storage)
         q.initialize()

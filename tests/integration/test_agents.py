@@ -65,6 +65,13 @@ def experiences_queue(config):
     return q
 
 
+@pytest.fixture(scope="module")
+def reflections_queue(config):
+    q = FSQueue("reflections", config.storage)
+    q.initialize()
+    return q
+
+
 # ---------------------------------------------------------------------------
 # Curator Integration Tests
 # ---------------------------------------------------------------------------
@@ -217,7 +224,7 @@ class TestSolverIntegration:
         # Enqueue the problem
         problems_queue.enqueue(
             "test",
-            {"problem_id": problem.problem_id, "title": problem.title},
+            {"problem_id": problem.problem_id},
         )
 
         # Dequeue and process
@@ -254,7 +261,7 @@ class TestSolverIntegration:
 class TestCriticIntegration:
     """Tests critic against real Claude API."""
 
-    def test_critique_experience(self, config, fs_backend, experiences_queue):
+    def test_critique_experience(self, config, fs_backend, experiences_queue, reflections_queue):
         """Critic should produce reflection cards from an experience."""
         from agenix.agents.critic_handler import CriticHandler
         from agenix.runner import ClaudeRunner
@@ -286,10 +293,7 @@ class TestCriticIntegration:
         # Enqueue experience message
         experiences_queue.enqueue(
             "test",
-            {
-                "experience_id": experience.experience_id,
-                "problem_id": problem.problem_id,
-            },
+            {"experience_id": experience.experience_id},
         )
 
         message = experiences_queue.dequeue()
@@ -299,6 +303,7 @@ class TestCriticIntegration:
             runner=runner,
             fs_backend=fs_backend,
             knowledge_store=store,
+            reflections_queue=reflections_queue,
         )
 
         try:

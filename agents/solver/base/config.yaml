@@ -7,3 +7,4 @@ tools:
 custom_tools:
   - knowledge_retriever
   - verifier
+  - recall
