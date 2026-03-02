@@ -63,27 +63,17 @@ A JSON object with:
 - `experience_id`: Experience identifier
 
 ## Output Format
-CRITICAL: Your final output MUST be ONLY a JSON object — no markdown, no explanation, no preamble. Output raw JSON directly.
+After reading and analyzing the experience, create 1-3 reflection cards by calling the `knowledge_create` tool for each one.
 
-```json
-{
-  "reflection_cards": [
-    {
-      "title": "Short descriptive title",
-      "content": "## Technique\n...\n\n## Problem Context\n...\n\n## Outcome\n...\n\n## Lesson\n...",
-      "code_snippet": "@triton.jit\ndef kernel(...): ...",
-      "tags": ["triton", "reduction", "tiling"],
-      "applicability": "When reducing over dimensions > 1024 elements",
-      "limitations": "Requires input dimension to be a multiple of BLOCK_SIZE for best performance"
-    }
-  ]
-}
-```
-
-Fields:
+For each card, call `knowledge_create` with these parameters:
+- `card_type`: "reflection"
 - `title`: Short descriptive title for the reflection
-- `content`: Detailed analysis using the content template
+- `content`: Detailed analysis using the content template above
 - `code_snippet`: Key Triton code pattern (empty string if not applicable)
-- `tags`: Array of short keyword tags summarizing the card's topics
-- `applicability`: When and how to apply this technique (free text)
-- `limitations`: Known caveats or constraints (free text)
+- `tags`: JSON array of short keyword tags, e.g. `["triton", "reduction", "tiling"]`
+- `applicability`: When and how to apply this technique
+- `limitations`: Known caveats or constraints
+- `experience_ids`: JSON array containing the experience_id from the input, e.g. `["<experience_id>"]`
+- `agent`: "critic"
+
+After creating all cards, output a brief summary of what you created.

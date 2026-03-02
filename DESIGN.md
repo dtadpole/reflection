@@ -6,27 +6,30 @@ Agents operate independently in separate processes, communicating via filesystem
 queues and a shared knowledge base.
 
 ```
-                    CURATOR (pure Python)
-                         │
-                         ▼
-                  [problems queue]
-                         │
-                         ▼
-<Verifier> ◀──── SOLVER ◀──── <Retriever>
-    │             ▲  │              ▲
-    └─────────────┘  │              │
-       (iterate)     ▼              │
-              [experiences queue]   │
-                         │          │
-                         ▼          │
-                      CRITIC        │
-                         │          │
-                         ▼          │
-                  [Knowledge Base] ─┘
-                     ▲        ▲
-                     │        │
-               ORGANIZER   INSIGHT_FINDER
-               (periodic)   (periodic)
+                  CURATOR
+                     │
+                     ▼
+                 [problems]
+                     │
+                     ▼
+  <Verifier> ◀──── SOLVER ◀────────── <Retriever>
+     │             ▲ │                     ▲
+     └─────────────┘ │                     │
+       (iterate)     ▼                     │
+                 [experiences]             │
+                       │                   │
+                       ▼                   │
+                    CRITIC                 │
+                    │    │                 │
+                    │    ▼                 │
+                    │   [Knowledge Base] ──┘
+                    │       ▲        ▲
+                    ▼       │        │
+            [reflections]   │        │
+                    │       │        │
+                    ▼       │        │
+                    ORGANIZER   INSIGHT_FINDER
+                    (periodic)   (periodic)
 ```
 
 ### Queue Topology

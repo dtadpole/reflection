@@ -123,6 +123,10 @@ def _bootstrap(config: ReflectionConfig, run_tag: str | None = None):
     recall_def = load_tool("recall", variant="baseline")
     registry.register(recall_def.create_fn(fs_backend=fs))
 
+    # Load knowledge tools — search, list, get, create, revise, merge, split, archive
+    knowledge_def = load_tool("knowledge", variant="baseline")
+    registry.register(knowledge_def.create_fn(knowledge_store=store))
+
     runner = ClaudeRunner(
         tool_registry=registry, run_dir=run_dir, experiences_dir=experiences_dir,
     )
@@ -354,7 +358,6 @@ def agent_critic(
     handler = CriticHandler(
         runner=runner,
         fs_backend=fs,
-        knowledge_store=pipeline.store,
         reflections_queue=reflections_q,
     )
     loop = QueueAgentLoop(experiences_q, handler, max_messages=1)

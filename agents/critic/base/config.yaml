@@ -6,3 +6,4 @@ custom_tools:
   - recall_fetch
   - recall_outline
   - recall_excerpt
+  - knowledge_create

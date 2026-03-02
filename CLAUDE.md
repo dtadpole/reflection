@@ -74,30 +74,30 @@ uv run ruff check . --fix                  # Auto-fix lint issues
 Agents operate independently and communicate via filesystem queues and the shared knowledge base.
 
 ```
-                    CURATOR (pure Python)
-                         │
-                         ▼
-                  [problems queue]
-                         │
-                         ▼
-<Verifier> ◀──── SOLVER ◀──── <Retriever>
-    │             ▲  │              ▲
-    └─────────────┘  │              │
-       (iterate)     ▼              │
-              [experiences queue]   │
-                         │          │
-                         ▼          │
-                      CRITIC        │
-                       │  │         │
-                       │  ▼         │
-                       │ [Knowledge Base] ─┘
-                       │    ▲        ▲
-                       ▼    │        │
-              [reflections queue]    │
-                       │    │        │
-                       ▼    │        │
-                 ORGANIZER   INSIGHT_FINDER
-                 (periodic)   (periodic)
+                  CURATOR
+                     │
+                     ▼
+                 [problems]
+                     │
+                     ▼
+  <Verifier> ◀──── SOLVER ◀────────── <Retriever>
+     │             ▲ │                     ▲
+     └─────────────┘ │                     │
+       (iterate)     ▼                     │
+                 [experiences]             │
+                       │                   │
+                       ▼                   │
+                    CRITIC                 │
+                    │    │                 │
+                    │    ▼                 │
+                    │   [Knowledge Base] ──┘
+                    │       ▲        ▲
+                    ▼       │        │
+            [reflections]   │        │
+                    │       │        │
+                    ▼       │        │
+                    ORGANIZER   INSIGHT_FINDER
+                    (periodic)   (periodic)
 ```
 
 ### Queue Topology
