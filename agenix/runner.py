@@ -107,8 +107,12 @@ def _log_verifier_result(agent_name: str, turn: int, block: Any) -> None:
     correct = data.get("correctness", False)
     runtime = data.get("runtime", -1.0)
     stats = data.get("runtime_stats", {})
-    gen_ms = stats.get("generated_ms", runtime if runtime > 0 else None)
-    ref_ms = stats.get("reference_ms")
+    # runtime_stats has nested structure: {"generated": {"mean_ms": ...}, "reference": {"mean_ms": ...}}
+    gen_ms = stats.get("generated", {}).get("mean_ms") if isinstance(stats.get("generated"), dict) else stats.get("generated_ms")
+    ref_ms = stats.get("reference", {}).get("mean_ms") if isinstance(stats.get("reference"), dict) else stats.get("reference_ms")
+    # Fallback to top-level runtime if generated_ms not available
+    if gen_ms is None and runtime > 0:
+        gen_ms = runtime
 
     # Build emoji summary
     compiled_str = "✅ Compiled" if compiled else "❌ Compile failed"
