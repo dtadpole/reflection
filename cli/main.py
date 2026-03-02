@@ -357,9 +357,10 @@ def agent_critic(
         knowledge_store=pipeline.store,
         reflections_queue=reflections_q,
     )
-    loop = QueueAgentLoop(experiences_q, handler)
+    loop = QueueAgentLoop(experiences_q, handler, max_messages=1)
     typer.echo(f"Critic agent started (run_tag={run_tag}).")
     loop.run()
+    typer.echo("Critic agent finished.")
 
 
 @agent_app.command("organizer")

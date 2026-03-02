@@ -107,7 +107,7 @@ Three queues (`problems`, `experiences`, `reflections`) under `<data_root>/<env>
 | Queue | Producer | Consumer | Payload |
 |-------|----------|----------|---------|
 | `problems` | CURATOR | SOLVER | `{problem_id}` |
-| `experiences` | SOLVER | CRITIC | `{experience_id}` |
+| `experiences` | SOLVER | CRITIC | `{experience_id, problem_id}` |
 | `reflections` | CRITIC | ORGANIZER/INSIGHT_FINDER (future) | `{card_id}` |
 
 Each queue has subdirectories: `pending/`, `processing/`, `done/`, `failed/`.

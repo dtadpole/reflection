@@ -10,7 +10,6 @@ from agenix.parsers import parse_reflection_cards
 from agenix.queue.fs_queue import FSQueue
 from agenix.queue.models import QueueMessage
 from agenix.runner import ClaudeRunner
-from agenix.storage.experience import extract_problem_id
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.lineage import record_creation
 from agenix.storage.models import SourceReference
@@ -40,18 +39,7 @@ class CriticHandler:
     def handle(self, message: QueueMessage) -> None:
         """Process an experience message from the experiences queue."""
         experience_id = message.payload["experience_id"]
-
-        # Read the raw .jsonl conversation log
-        log_text = self._fs.get_experience_log(experience_id)
-        if log_text is None:
-            raise ValueError(f"Experience {experience_id} not found")
-
-        # Extract problem_id from the first user message in the log
-        problem_id = extract_problem_id(log_text)
-        if problem_id is None:
-            raise ValueError(
-                f"Could not extract problem_id from experience {experience_id}"
-            )
+        problem_id = message.payload["problem_id"]
 
         problem = self._fs.get_problem(problem_id)
         if problem is None:
@@ -63,12 +51,11 @@ class CriticHandler:
             problem.title,
         )
 
-        # Send the raw conversation log to the critic agent
+        # Give the critic metadata — it reads the experience via outline + excerpt tools
         input_payload = json.dumps({
             "problem_title": problem.title,
             "problem_id": problem_id,
             "experience_id": experience_id,
-            "conversation_log": log_text,
         })
 
         agent = load_agent("critic")

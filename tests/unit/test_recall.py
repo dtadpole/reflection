@@ -1,4 +1,4 @@
-"""Unit tests for the recall MCP tools (recall + excerpt)."""
+"""Unit tests for the recall MCP tools (fetch, outline, excerpt)."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _is_error(result: dict) -> bool:
 
 
 def _make_tools(fs_backend=None):
-    """Create recall + excerpt tools with optional mock FSBackend."""
+    """Create recall tools with optional mock FSBackend."""
     if fs_backend is None:
         fs_backend = MagicMock()
         fs_backend.get_problem.return_value = None
@@ -51,13 +51,13 @@ def _make_log(n_rows: int = 10) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Recall tests
+# fetch tests
 # ---------------------------------------------------------------------------
 
 
-class TestRecallProblem:
+class TestFetchProblem:
     @pytest.mark.asyncio
-    async def test_recall_problem(self):
+    async def test_fetch_problem(self):
         problem = Problem(
             title="Fused Softmax",
             description="Write a Triton kernel for fused softmax.",
@@ -65,32 +65,31 @@ class TestRecallProblem:
         )
         fs = MagicMock()
         fs.get_problem.return_value = problem
-        handler, _ = _get_handler("recall", fs)
+        handler, _ = _get_handler("recall_fetch", fs)
 
         result = await handler({"entity_type": "problem", "entity_id": problem.problem_id})
         assert not _is_error(result)
 
         data = _parse_result(result)
         assert data["entity_type"] == "problem"
-        assert data["entity_id"] == problem.problem_id
+        assert data["format"] == "json"
         assert data["data"]["title"] == "Fused Softmax"
-        assert data["data"]["domain"] == "triton_kernels"
 
     @pytest.mark.asyncio
     async def test_problem_not_found(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({"entity_type": "problem", "entity_id": "nonexistent"})
         assert _is_error(result)
         assert "not found" in result["content"][0]["text"]
 
 
-class TestRecallExperience:
+class TestFetchExperience:
     @pytest.mark.asyncio
-    async def test_recall_experience(self):
+    async def test_fetch_experience(self):
         log_text = '{"role": "user", "content": "hello"}\n'
         fs = MagicMock()
         fs.get_experience_log.return_value = log_text
-        handler, _ = _get_handler("recall", fs)
+        handler, _ = _get_handler("recall_fetch", fs)
 
         result = await handler({"entity_type": "experience", "entity_id": "exp_001"})
         assert not _is_error(result)
@@ -102,14 +101,14 @@ class TestRecallExperience:
 
     @pytest.mark.asyncio
     async def test_experience_not_found(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({"entity_type": "experience", "entity_id": "nonexistent"})
         assert _is_error(result)
 
 
-class TestRecallCard:
+class TestFetchCard:
     @pytest.mark.asyncio
-    async def test_recall_card(self):
+    async def test_fetch_card(self):
         card = Card(
             card_type="reflection",
             title="Good use of tiling",
@@ -118,61 +117,150 @@ class TestRecallCard:
         )
         fs = MagicMock()
         fs.get_card.return_value = card
-        handler, _ = _get_handler("recall", fs)
+        handler, _ = _get_handler("recall_fetch", fs)
 
         result = await handler({"entity_type": "card", "entity_id": card.card_id})
         assert not _is_error(result)
 
         data = _parse_result(result)
         assert data["entity_type"] == "card"
+        assert data["format"] == "json"
         assert data["data"]["title"] == "Good use of tiling"
-        assert data["data"]["card_type"] == "reflection"
 
     @pytest.mark.asyncio
     async def test_card_not_found(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({"entity_type": "card", "entity_id": "nonexistent"})
         assert _is_error(result)
 
 
-class TestRecallValidation:
+class TestFetchValidation:
     @pytest.mark.asyncio
     async def test_missing_entity_type(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({"entity_id": "abc"})
         assert _is_error(result)
         assert "entity_type is required" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_missing_entity_id(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({"entity_type": "problem"})
         assert _is_error(result)
         assert "entity_id is required" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_invalid_entity_type(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({"entity_type": "bogus", "entity_id": "abc"})
         assert _is_error(result)
         assert "must be one of" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_empty_args(self):
-        handler, _ = _get_handler("recall")
+        handler, _ = _get_handler("recall_fetch")
         result = await handler({})
         assert _is_error(result)
 
 
 # ---------------------------------------------------------------------------
-# Excerpt tests
+# outline tests
+# ---------------------------------------------------------------------------
+
+
+class TestOutlineExperience:
+    @pytest.mark.asyncio
+    async def test_outline_jsonl(self):
+        fs = MagicMock()
+        fs.get_experience_log.return_value = _make_log(5)
+        handler, _ = _get_handler("recall_outline", fs)
+
+        result = await handler({"entity_type": "experience", "entity_id": "exp_001"})
+        assert not _is_error(result)
+
+        data = _parse_result(result)
+        assert data["format"] == "jsonl"
+        assert data["total_messages"] == 5
+        assert len(data["messages"]) == 5
+        assert data["messages"][0]["row"] == 1
+        assert data["messages"][0]["role"] == "user"
+        assert data["messages"][1]["role"] == "assistant"
+        assert all("length" in m for m in data["messages"])
+        assert data["total_length"] > 0
+
+    @pytest.mark.asyncio
+    async def test_outline_not_found(self):
+        handler, _ = _get_handler("recall_outline")
+        result = await handler({"entity_type": "experience", "entity_id": "nonexistent"})
+        assert _is_error(result)
+        assert "not found" in result["content"][0]["text"]
+
+
+class TestOutlineProblem:
+    @pytest.mark.asyncio
+    async def test_outline_json(self):
+        problem = Problem(
+            title="Fused Softmax",
+            description="Write a Triton kernel.",
+            domain="triton_kernels",
+        )
+        fs = MagicMock()
+        fs.get_problem.return_value = problem
+        handler, _ = _get_handler("recall_outline", fs)
+
+        result = await handler({"entity_type": "problem", "entity_id": problem.problem_id})
+        assert not _is_error(result)
+
+        data = _parse_result(result)
+        assert data["format"] == "json"
+        assert data["length"] > 0
+        assert "messages" not in data
+
+
+class TestOutlineCard:
+    @pytest.mark.asyncio
+    async def test_outline_card_json(self):
+        card = Card(
+            card_type="reflection",
+            title="Tiling",
+            content="Tiling is good.",
+            category="optimization",
+        )
+        fs = MagicMock()
+        fs.get_card.return_value = card
+        handler, _ = _get_handler("recall_outline", fs)
+
+        result = await handler({"entity_type": "card", "entity_id": card.card_id})
+        assert not _is_error(result)
+
+        data = _parse_result(result)
+        assert data["format"] == "json"
+        assert data["length"] > 0
+
+
+class TestOutlineValidation:
+    @pytest.mark.asyncio
+    async def test_missing_entity_type(self):
+        handler, _ = _get_handler("recall_outline")
+        result = await handler({"entity_id": "abc"})
+        assert _is_error(result)
+
+    @pytest.mark.asyncio
+    async def test_invalid_entity_type(self):
+        handler, _ = _get_handler("recall_outline")
+        result = await handler({"entity_type": "bogus", "entity_id": "abc"})
+        assert _is_error(result)
+
+
+# ---------------------------------------------------------------------------
+# excerpt tests
 # ---------------------------------------------------------------------------
 
 
 def _make_excerpt_handler(log_text: str | None = None):
     fs = MagicMock()
     fs.get_experience_log.return_value = log_text
-    handler, _ = _get_handler("excerpt", fs)
+    handler, _ = _get_handler("recall_excerpt", fs)
     return handler
 
 
@@ -238,11 +326,16 @@ class TestExcerptValidation:
         assert "exceeds" in result["content"][0]["text"]
 
 
-class TestCreateToolReturnsMultiple:
-    def test_returns_two_tools(self):
+# ---------------------------------------------------------------------------
+# create_tool structure tests
+# ---------------------------------------------------------------------------
+
+
+class TestCreateToolStructure:
+    def test_returns_three_tools(self):
         fs = MagicMock()
         tools = create_tool(fs_backend=fs)
         assert isinstance(tools, list)
-        assert len(tools) == 2
+        assert len(tools) == 3
         names = {t.name for t in tools}
-        assert names == {"recall", "excerpt"}
+        assert names == {"recall_fetch", "recall_outline", "recall_excerpt"}

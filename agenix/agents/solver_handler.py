@@ -97,7 +97,7 @@ class SolverHandler:
             self._exp_queue.initialize()
             self._exp_queue.enqueue(
                 sender="solver",
-                payload={"experience_id": result.experience_id},
+                payload={"experience_id": result.experience_id, "problem_id": problem_id},
             )
 
         logger.info(

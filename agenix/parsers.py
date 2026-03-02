@@ -46,13 +46,20 @@ def extract_json(text: str) -> dict[str, Any]:
             except json.JSONDecodeError:
                 continue
 
-    # Try scanning for first '{' (prose-prefixed JSON)
-    brace = text.find("{")
-    if brace >= 0:
+    # Try scanning for JSON objects using raw_decode (handles trailing text)
+    decoder = json.JSONDecoder()
+    idx = 0
+    while idx < len(text):
+        brace = text.find("{", idx)
+        if brace < 0:
+            break
         try:
-            return json.loads(text[brace:])
+            obj, end = decoder.raw_decode(text, brace)
+            if isinstance(obj, dict):
+                return obj
         except json.JSONDecodeError:
             pass
+        idx = brace + 1
 
     raise ValueError(f"Could not parse JSON from agent output: {text[:200]}")
 

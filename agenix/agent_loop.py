@@ -43,12 +43,14 @@ class QueueAgentLoop:
         queue: FSQueue,
         handler: QueueHandler,
         *,
+        max_messages: int = 0,
         initial_backoff: float = 1.0,
         max_backoff: float = 30.0,
         backoff_factor: float = 2.0,
     ) -> None:
         self._queue = queue
         self._handler = handler
+        self._max_messages = max_messages
         self._initial_backoff = initial_backoff
         self._max_backoff = max_backoff
         self._backoff_factor = backoff_factor
@@ -61,11 +63,16 @@ class QueueAgentLoop:
         self._queue.initialize()
 
         backoff = self._initial_backoff
+        processed = 0
         logger.info("Starting queue loop for %s", self._queue.queue_name)
 
         while self._running:
             message = self._queue.dequeue()
             if message is None:
+                # If max_messages is set and queue is empty, stop immediately
+                if self._max_messages > 0:
+                    logger.info("Queue empty, stopping (max_messages=%d)", self._max_messages)
+                    break
                 time.sleep(backoff)
                 backoff = min(backoff * self._backoff_factor, self._max_backoff)
                 continue
@@ -73,6 +80,11 @@ class QueueAgentLoop:
             # Reset backoff on successful dequeue
             backoff = self._initial_backoff
             self._process(message)
+            processed += 1
+
+            if self._max_messages > 0 and processed >= self._max_messages:
+                logger.info("Reached max_messages=%d, stopping", self._max_messages)
+                break
 
         logger.info("Queue loop for %s stopped", self._queue.queue_name)
 

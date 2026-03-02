@@ -7,5 +7,6 @@ tools:
 custom_tools:
   - knowledge_retriever
   - verifier
-  - recall
-  - excerpt
+  - recall_fetch
+  - recall_outline
+  - recall_excerpt

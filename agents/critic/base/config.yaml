@@ -1,7 +1,8 @@
 model: sonnet
 temperature: 0.5
-max_turns: 10
+max_turns: 100
 tools: []
 custom_tools:
-  - recall
-  - excerpt
+  - recall_fetch
+  - recall_outline
+  - recall_excerpt
