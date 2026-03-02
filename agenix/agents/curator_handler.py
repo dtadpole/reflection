@@ -11,7 +11,7 @@ import logging
 import random
 from typing import Optional
 
-from agenix.queue.fs_queue import FSQueue
+from agenix.queue.fs_queue import FSQueue, MessageState
 from agenix.storage.fs_backend import FSBackend
 from agenix.storage.models import Difficulty, Problem
 
@@ -97,12 +97,23 @@ def run_curator(
     n: int = 100,
     levels: Optional[list[str]] = None,
     seed: Optional[int] = None,
+    max_pending: int = 100,
 ) -> list[Problem]:
     """Load KernelBench problems, dedup, save, and enqueue.
 
     Returns the list of newly created problems.
     """
     queue.initialize()
+
+    # Stop early if the pending queue is already full enough
+    pending_count = queue.count(MessageState.PENDING)
+    if pending_count >= max_pending:
+        logger.info(
+            "Curator skipped: %d pending problems already in queue (max %d)",
+            pending_count,
+            max_pending,
+        )
+        return []
 
     # Load existing problem titles for dedup
     existing_titles = {p.title for p in fs_backend.list_problems(limit=1000)}
@@ -112,6 +123,15 @@ def run_curator(
 
     created = []
     for row in sampled:
+        # Check pending count before each enqueue
+        if queue.count(MessageState.PENDING) >= max_pending:
+            logger.info(
+                "Curator stopping: pending queue reached %d (max %d)",
+                max_pending,
+                max_pending,
+            )
+            break
+
         problem = row_to_problem(row)
         if problem.title in existing_titles:
             logger.debug("Skipping duplicate: %s", problem.title)
