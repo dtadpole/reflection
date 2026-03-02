@@ -129,6 +129,10 @@ class KbEvalClient:
                     import asyncio
 
                     await asyncio.sleep(wait)
+            except httpx.ReadTimeout:
+                # Read timeouts mean the server is still processing — don't
+                # retry as the kernel is likely too slow to evaluate.
+                raise
             except httpx.TransportError as e:
                 last_exc = e
                 if attempt < self._config.retry_count - 1:

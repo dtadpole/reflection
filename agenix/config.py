@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -29,7 +30,7 @@ class PipelineConfig(BaseModel):
 
 class StorageConfig(BaseModel):
     data_root: str = "~/.reflection"
-    env: str = "prod"
+    env: str = ""  # Resolved at load time; see _default_env()
     lance_dir: str = "lance"
 
     @property
@@ -78,7 +79,7 @@ class KbEvalServerConfig(BaseModel):
 
 class KbEvalClientConfig(BaseModel):
     base_url: str = "http://localhost:8456"
-    timeout: int = 300  # HTTP read timeout
+    timeout: int = 180  # HTTP read timeout (3 min max per eval)
     retry_count: int = 4
     retry_interval: float = 3.0
 
@@ -167,6 +168,12 @@ class ReflectionConfig(BaseModel):
     tunnels: TunnelsConfig = Field(default_factory=TunnelsConfig)
 
 
+def _default_env() -> str:
+    """Return the default environment name: test_${USER}."""
+    user = os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+    return f"test_{user}"
+
+
 def load_config(config_path: Optional[Path] = None) -> ReflectionConfig:
     """Load configuration from a TOML file, falling back to defaults.
 
@@ -181,6 +188,10 @@ def load_config(config_path: Optional[Path] = None) -> ReflectionConfig:
         cfg = ReflectionConfig.model_validate(raw)
     else:
         cfg = ReflectionConfig()
+
+    # Resolve default env if not explicitly set
+    if not cfg.storage.env:
+        cfg.storage.env = _default_env()
 
     # Merge hosts.yaml into services.endpoints
     hosts_path = config_path.parent / "hosts.yaml"

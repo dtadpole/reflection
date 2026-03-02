@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -10,9 +11,19 @@ from claude_agent_sdk import SdkMcpTool, tool
 from agenix.tools.base import error_result, text_result
 from services.kb_eval.baseline.client import KbEvalClient
 
+# Maximum wall-clock time for a single verifier call (seconds).
+# Covers the full round-trip: HTTP + GPU compile + eval + response.
+DEFAULT_TIMEOUT = 180  # 3 minutes
 
-def create_tool(*, kb_eval_client: KbEvalClient) -> SdkMcpTool[Any]:
+
+def create_tool(
+    *, kb_eval_client: KbEvalClient, timeout: int = DEFAULT_TIMEOUT,
+) -> SdkMcpTool[Any]:
     """Create a verifier MCP tool backed by a remote kbEval service.
+
+    Args:
+        kb_eval_client: HTTP client for the kbEval service.
+        timeout: Maximum seconds per verification call (default 180).
 
     Returns an SdkMcpTool that can be registered with a ToolRegistry
     or passed directly to create_sdk_mcp_server.
@@ -44,12 +55,19 @@ def create_tool(*, kb_eval_client: KbEvalClient) -> SdkMcpTool[Any]:
             )
 
         try:
-            result = await kb_eval_client.eval(
-                reference_code=reference_code,
-                generated_code=generated_code,
-                code_type=code_type,
-            )
+            async with asyncio.timeout(timeout):
+                result = await kb_eval_client.eval(
+                    reference_code=reference_code,
+                    generated_code=generated_code,
+                    code_type=code_type,
+                )
             return text_result(json.dumps(result.model_dump(), indent=2))
+        except TimeoutError:
+            return error_result(
+                f"Verification timed out after {timeout}s. "
+                "The kernel may be too complex or the server is overloaded. "
+                "Try simplifying the kernel."
+            )
         except Exception as e:
             return error_result(f"kbEval request failed: {e}")
 

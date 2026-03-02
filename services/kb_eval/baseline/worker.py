@@ -161,6 +161,26 @@ def run_eval(
             ref_model = model_cls(*init_inputs).to(device)
             new_model = new_model_cls(*init_inputs).to(device)
 
+            # 5b. Copy weights from reference to generated model
+            # This ensures both models use the same learned parameters,
+            # so we're comparing operations, not random initializations.
+            import torch
+
+            ref_sd = ref_model.state_dict()
+            new_sd = new_model.state_dict()
+            # Only copy keys that exist in both and have matching shapes
+            copied = {}
+            for key in ref_sd:
+                if key in new_sd and ref_sd[key].shape == new_sd[key].shape:
+                    copied[key] = ref_sd[key]
+            if copied:
+                new_model.load_state_dict(copied, strict=False)
+                logger.info(
+                    "Copied %d/%d weight tensors from reference to generated model",
+                    len(copied),
+                    len(ref_sd),
+                )
+
             # 6. Correctness verification
             corr = verify_correctness(ref_model, new_model, get_inputs, device)
             result.correctness = corr.passed_trials == corr.total_trials
