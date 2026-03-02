@@ -229,7 +229,6 @@ class TestCreate:
             "global memory access by factor of tile_size.",
             tags=["gpu", "shared_memory", "tiling"],
             experience_ids=["exp-002"],
-            category="optimization",
             confidence=0.85,
             supporting_steps=[3, 5, 7],
         )
@@ -245,7 +244,6 @@ class TestCreate:
 
         loaded = store.get_card(card.card_id)
         assert loaded.card_type == "reflection"
-        assert loaded.category == "optimization"
         assert loaded.confidence == 0.85
 
     def test_create_multiple_and_search(self, store):

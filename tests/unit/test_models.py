@@ -158,12 +158,10 @@ class TestReflectionCard:
             title="DP Reflection",
             content="Dynamic programming works by breaking problems into subproblems",
             experience_ids=["e1"],
-            category="algorithm",
             confidence=0.8,
             supporting_steps=[0, 2, 4],
         )
         assert r.card_type == "reflection"
-        assert r.category == "algorithm"
         assert r.confidence == 0.8
         assert len(r.supporting_steps) == 3
         assert r.experience_ids == ["e1"]
@@ -201,7 +199,6 @@ class TestReflectionCard:
             title="Test",
             content="Content",
             experience_ids=["e1"],
-            category="pattern",
             confidence=0.9,
             supporting_steps=[1, 3],
         )
@@ -209,7 +206,6 @@ class TestReflectionCard:
         r2 = Card.model_validate_json(json_str)
         assert r2.card_type == "reflection"
         assert r2.experience_ids == ["e1"]
-        assert r2.category == "pattern"
         assert r2.confidence == 0.9
 
 

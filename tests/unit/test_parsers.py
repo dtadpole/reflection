@@ -147,7 +147,6 @@ class TestParseReflectionCards:
                 {
                     "title": "Good pattern",
                     "content": "Used tiling effectively",
-                    "category": "optimization",
                     "confidence": 0.9,
                     "tags": ["tiling"],
                     "supporting_steps": [0, 1],
@@ -158,24 +157,7 @@ class TestParseReflectionCards:
         assert len(cards) == 1
         assert cards[0].title == "Good pattern"
         assert cards[0].experience_ids == ["exp_1"]
-        assert cards[0].category == "optimization"
         assert cards[0].confidence == 0.9
-
-    def test_invalid_category_defaults_to_general(self):
-        output = json.dumps({
-            "reflection_cards": [
-                {
-                    "title": "Test",
-                    "content": "content",
-                    "category": "nonexistent_category",
-                    "confidence": 0.5,
-                    "tags": [],
-                    "supporting_steps": [],
-                }
-            ]
-        })
-        cards = parse_reflection_cards(output, ["exp_1"])
-        assert cards[0].category == "nonexistent_category"
 
 
 class TestParseKnowledgeActions:

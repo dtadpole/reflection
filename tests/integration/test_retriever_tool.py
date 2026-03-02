@@ -174,7 +174,6 @@ SAMPLE_CARDS = [
             "on inputs not divisible by BLOCK_SIZE."
         ),
         experience_ids=["exp-001"],
-        category="debugging",
         confidence=0.95,
         tags=["triton", "grid", "off-by-one"],
     ),

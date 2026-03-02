@@ -183,7 +183,6 @@ class TestReflectionCardCRUD:
             title="Memoization Insight",
             content="Fibonacci can be solved with memoization",
             experience_ids=[sample_experience.experience_id],
-            category="algorithm",
             confidence=0.9,
             supporting_steps=[0, 1],
         )
@@ -193,7 +192,7 @@ class TestReflectionCardCRUD:
         assert loaded.card_type == "reflection"
         assert loaded.content == "Fibonacci can be solved with memoization"
         assert loaded.experience_ids == [sample_experience.experience_id]
-        assert loaded.category == "algorithm"
+        assert loaded.confidence == 0.9
 
     def test_list_by_type(self, backend, sample_knowledge_card, sample_experience):
         r = Card(

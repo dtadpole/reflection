@@ -113,7 +113,7 @@ class TestFetchCard:
             card_type="reflection",
             title="Good use of tiling",
             content="Tiling improved performance by 2x.",
-            category="optimization",
+
         )
         fs = MagicMock()
         fs.get_card.return_value = card
@@ -224,7 +224,7 @@ class TestOutlineCard:
             card_type="reflection",
             title="Tiling",
             content="Tiling is good.",
-            category="optimization",
+
         )
         fs = MagicMock()
         fs.get_card.return_value = card

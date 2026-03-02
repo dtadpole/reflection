@@ -148,13 +148,10 @@ class Card(BaseModel):
     tags: list[str] = Field(default_factory=list)
     source_ids: list[str] = Field(default_factory=list)
 
-    # Applicability (structured)
+    # Applicability
     domain: str = "general"
-    category: str = "general"  # free-form: "optimization", "debugging", "pattern", etc.
-    applies_to: list[str] = Field(default_factory=list)
-    not_applies_to: list[str] = Field(default_factory=list)
-    applicability: str = ""
-    limitations: str = ""
+    applicability: str = ""  # When/how to apply (free text)
+    limitations: str = ""  # Known caveats or constraints (free text)
 
     # Insight-specific (optional)
     hypothesis: str = ""

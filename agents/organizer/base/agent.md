@@ -68,8 +68,8 @@ A JSON object with:
     - `content`: Detailed knowledge content using the content template
     - `code_snippet`: Working Triton code example demonstrating the technique
     - `domain`: "triton_kernels"
-    - `applicability`: When this knowledge applies (1-2 sentences)
-    - `limitations`: When this does not apply (1-2 sentences)
+    - `applicability`: When this knowledge applies (free text, 1-2 sentences)
+    - `limitations`: Known caveats or constraints (free text, 1-2 sentences)
     - `tags`: Array of tags
     - `related_card_ids`: IDs of related existing cards (if any)
   - For "revise":
@@ -105,7 +105,6 @@ Input:
       "title": "Fusing GeLU + Dropout reduces memory bandwidth",
       "content": "## Technique\nFused GeLU and dropout into a single Triton kernel pass.\n\n## Problem Context\nSequential elementwise ops (GeLU then dropout) on large tensors.\n\n## Outcome\nEliminated intermediate tensor write/read, 1.8x speedup over separate kernels.\n\n## Lesson\nAlways fuse sequential elementwise ops — the bandwidth savings are substantial.",
       "code_snippet": "@triton.jit\ndef fused_gelu_dropout(x_ptr, out_ptr, p, seed, n, BLOCK: tl.constexpr):\n    ...",
-      "category": "optimization",
       "confidence": 0.9,
       "tags": ["fusion", "gelu", "dropout"]
     }

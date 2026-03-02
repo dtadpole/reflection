@@ -137,12 +137,13 @@ def parse_reflection_cards(
             content=rc["content"],
             code_snippet=rc.get("code_snippet", ""),
             experience_ids=experience_ids[:3],
-            category=rc.get("category", "general"),
+            domain=rc.get("domain", "general"),
             confidence=rc.get("confidence", 0.5),
             tags=rc.get("tags", []),
             supporting_steps=rc.get("supporting_steps", []),
-            applies_to=rc.get("applies_to", []),
-            not_applies_to=rc.get("not_applies_to", []),
+
+            applicability=rc.get("applicability", ""),
+            limitations=rc.get("limitations", ""),
         ))
     return cards
 
@@ -167,8 +168,6 @@ def parse_knowledge_actions(
             limitations=action.get("limitations", ""),
             tags=action.get("tags", []),
             related_card_ids=action.get("related_card_ids", []),
-            applies_to=action.get("applies_to", []),
-            not_applies_to=action.get("not_applies_to", []),
         ))
     return cards
 
@@ -186,11 +185,12 @@ def parse_insight_cards(
             content=ic["content"],
             code_snippet=ic.get("code_snippet", ""),
             experience_ids=(experience_ids or [])[:3],
+            domain=ic.get("domain", "general"),
             hypothesis=ic.get("hypothesis", ""),
             evidence_for=ic.get("evidence_for", []),
             evidence_against=ic.get("evidence_against", []),
             tags=ic.get("tags", []),
-            applies_to=ic.get("applies_to", []),
-            not_applies_to=ic.get("not_applies_to", []),
+            applicability=ic.get("applicability", ""),
+            limitations=ic.get("limitations", ""),
         ))
     return cards

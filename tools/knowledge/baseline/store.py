@@ -153,6 +153,4 @@ def _card_to_text(card: Card) -> str:
         parts.append("Applicability: " + card.applicability)
     if card.hypothesis:
         parts.append("Hypothesis: " + card.hypothesis)
-    if card.category and card.category != "general":
-        parts.append("Category: " + card.category)
     return "\n".join(parts)
