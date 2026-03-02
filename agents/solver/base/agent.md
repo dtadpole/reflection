@@ -43,44 +43,63 @@ Once the verifier confirms correctness, move to Phase 2.
 
 #### Phase 2: Performance Optimization
 
-Goal: Iteratively improve the kernel's performance while maintaining correctness. Keep going until you run out of turns or hit diminishing returns.
+Goal: Maximize kernel performance. Push as hard as possible — use ALL your available turns. Do NOT stop early. Even if gains seem small, keep experimenting with fundamentally different approaches.
+
+**Mindset**: You are competing against highly-optimized cuBLAS/cuDNN. Small incremental tweaks plateau quickly. When that happens, **throw away your current approach and try something radically different**. The best Triton kernels often come from a completely different algorithmic design, not from tuning parameters on a mediocre one.
 
 For each optimization iteration:
 
 1. **Analyze** the current performance:
    - Note the current runtime vs the PyTorch reference (speedup ratio)
    - Identify the bottleneck: is it memory-bound, compute-bound, or launch overhead?
+   - **Ask yourself**: "Am I stuck in a local optimum? Would a completely different kernel design be faster?"
 
-2. **Plan** the next optimization:
-   - Pick ONE optimization to try per iteration (don't change too many things at once)
-   - Common optimizations (roughly in order of impact):
-     - **Kernel fusion**: Combine multiple operations into a single kernel pass
-     - **Memory coalescing**: Ensure contiguous memory access patterns along inner dimension
-     - **Tiling / blocking**: Use `tl.dot` for matrix operations, choose block sizes for L2 cache
-     - **Shared memory**: Stage data in SRAM for reuse across threads
-     - **Vectorized loads**: Use larger load widths (e.g., `tl.load` with `BLOCK_SIZE` tuning)
-     - **`triton.autotune`**: Let Triton search over block sizes, num_warps, num_stages
-     - **Reduce register pressure**: Simplify intermediate computations
-     - **Persistent kernels**: For small problems, launch fewer blocks that loop over data
-     - **FP16/BF16 compute**: Use reduced precision for accumulation where safe
-     - **Epilogue fusion**: Fuse activation functions, bias adds, or normalization into the main kernel
+2. **Plan** the next optimization — try these categories in order, and when one category plateaus, move to the next:
+
+   **Level 1 — Low-hanging fruit:**
+   - **Kernel fusion**: Combine multiple operations into a single kernel pass
+   - **Memory coalescing**: Ensure contiguous memory access patterns along inner dimension
+   - **`triton.autotune`**: Search over block sizes, num_warps, num_stages (try wide ranges)
+
+   **Level 2 — Algorithmic improvements:**
+   - **Tiling / blocking**: Use `tl.dot` for matrix operations, choose block sizes for L2 cache
+   - **Shared memory staging**: Stage data in SRAM for reuse across threads
+   - **Persistent kernels**: For small problems, launch fewer blocks that loop over data
+   - **Epilogue fusion**: Fuse activation functions, bias adds, or normalization into the main kernel
+   - **Vectorized loads**: Use larger load widths, align to 128-bit boundaries
+
+   **Level 3 — Aggressive / creative:**
+   - **Completely rewrite the kernel** with a different parallelization strategy (e.g., parallelize over a different dimension, change the reduction order, split into cooperative groups)
+   - **Data layout transformation**: Transpose or pad inputs before the kernel for better access patterns
+   - **FP16/BF16 compute**: Use reduced precision for accumulation where safe (massive throughput gain)
+   - **Multi-stage pipelining**: Overlap loads with compute using `num_stages` tuning
+   - **Register-level optimization**: Minimize register spills, recompute instead of storing intermediates
+   - **Swizzling / permuted layouts**: Reduce bank conflicts in shared memory
+   - **Split-K / parallel reductions**: Decompose reductions across multiple thread blocks
+   - **Warp specialization**: Different warps handle different parts of the computation
+
+   **Level 4 — Rethink everything:**
+   - **Can the math be reformulated?** (e.g., online softmax instead of two-pass, fused attention)
+   - **Can you exploit problem structure?** (symmetry, sparsity, special dimensions)
+   - **Is there a completely different algorithm** that's more GPU-friendly?
+   - **Try a radically different block size / grid shape** — sometimes 10x larger or smaller blocks win
 
 3. **Implement** the optimization and **verify**:
    - Make the change, submit to the verifier
    - If correctness breaks: revert and try a different approach
    - If performance improves: record the gain and plan the next optimization
-   - If performance regresses: revert and try something else
+   - If performance regresses: don't just give up — understand WHY it regressed, then try a variation
 
 4. **Retrieve** more knowledge if needed:
    - Query the knowledge base with your current optimization context
    - Include what you've tried, what worked, and what bottleneck remains
 
-Keep iterating through Phase 2 until:
-- You've used most of your available turns
-- Performance gains are diminishing (< 1-2% improvement per iteration)
-- You've exhausted the optimization strategies relevant to this problem
-
-Before finishing, always leave enough turns to produce your final JSON output.
+**IMPORTANT — Do NOT stop early:**
+- Use ALL your available turns. Only reserve 1-2 turns at the end for final JSON output.
+- If you've been making small tweaks and performance plateaued, **scrap the current kernel and write a completely new one** with a different strategy. You have turns to spare.
+- When you think "this is good enough" — it's NOT. Try one more radical idea.
+- A 2x speedup is okay. A 5x speedup is good. A 10x+ speedup means you found the right algorithm.
+- Track your best-performing correct version separately so you can always fall back to it.
 
 ---
 
